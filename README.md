@@ -16,4 +16,12 @@ Model scores: AIC, Akaike weights, and BIC scores are implemented.
 
 Decision procedures: Beyond the ECIC procedure itself, the package reports the standard "just pick the best model" procedure by default, along with the Burnham-Anderson rule of thumb using Akaike weights. 
 
+EXAMPLES
+See scripts in spanos_test.R, rwalktest.R, paleofit_test.r.
 
+GUIDE TO FILES:
+
+ecic.R: defines the main ECIC function that takes a dataset and list of models and applies a specified score function and decision procedure.
+ic_scores.R: defines functions for AIC, BIC, and Akaike weight model scores
+bias_correct.R: implements a heuristic correction to maximum likelihood estimates of model parameters before simulating from alternative models. The correction accounts for conditioning the simulations on a particular model being observed best.
+ecic_control.R: defines the ecicControl function to calculate parametric bootstrap distributions of score differences assuming alternative models to the observed best are true
