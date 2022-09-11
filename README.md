@@ -22,6 +22,15 @@ See scripts in spanos_test.R, rwalktest.R, paleofit_test.r.
 GUIDE TO FILES:
 
 ecic.R: defines the main ECIC function that takes a dataset and list of models and applies a specified score function and decision procedure.
-ic_scores.R: defines functions for AIC, BIC, and Akaike weight model scores
+
+ecic_model.R: provides wrappers for ECIC model objects (and lists of ECIC model objects) of various types (e.g. lm, random walk, and normal distributions). 
+
+ic_scores.R: defines functions for model scores, including the AIC, BIC, and Akaike weight
+
 bias_correct.R: implements a heuristic correction to maximum likelihood estimates of model parameters before simulating from alternative models. The correction accounts for conditioning the simulations on a particular model being observed best.
+
 ecic_control.R: defines the ecicControl function to calculate parametric bootstrap distributions of score differences assuming alternative models to the observed best are true
+
+model_frequences.R: calculate frequency the observed best model also scores best assuming an alternate model is true
+
+
