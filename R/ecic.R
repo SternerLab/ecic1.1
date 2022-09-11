@@ -78,12 +78,15 @@ ECIC = function(models, data, alpha = c(0.01, 0.05, 0.1), N = 1000, ic = 'AIC', 
   #use parametric bootstrapping to calculate score difference distributions
   icd = lapply(alt.models, function(x) ecicControl(n, x, bc[[x$ID]]$parameters, best, models, N, ic)) #see ecic_control.R for function definition
 
-
+  #get the frequencies that the observed best model scored best under the alternative models
   best.freq = sapply(icd, function(x) x$frequencies$frequencies[best.ix])
+  #apply the correction alpha/P(M_b=M) to the quantile
   alpha.primes = lapply(alpha,
                         function(a)  sapply(best.freq, function(x) ifelse(x==0, 1, a/x)))
+  #ensure the corrected alpha values are <= 1
   alpha.primes = lapply(alpha.primes, function(x) sapply(x, function(a) min(a, 1)))
-  alpha.primes.N = lapply(alpha.primes, function(x) round(x * N))
+  #transform the corrected alphas to quantiles based on the number of simulated datasets, N
+  alpha.primes.N = lapply(alpha.primes, function(x) round(x * N)) #warning: this variable is not used again in the code
   differences = lapply(icd, function(x) x$differences)
   ratios = lapply(icd, function(x) x$ratios)
 
