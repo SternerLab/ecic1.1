@@ -4,7 +4,7 @@
 
 # This script assesses error rates
 # for a model set of three Bernoulli distributions with parameters
-# 0.5,0.65, and 0.75
+# 0.48,0.65, and 0.75
 # We simulate a scenario where the true probability distribution is a Bernoulli 
 # distribution with p=0.65
 # The purpose of this simulation study is debug the code in 
@@ -41,13 +41,13 @@ DGOFSimComp <- function(ICScores,MbInd)
 #####################################################################
 
 # store parameters for the model set 
-M <- c(0.5,0.65,0.75)
+M <- c(0.48,0.65,0.75)
 # store the cardinality of the model set
 MLen <- length(M)
 # store the true generating probability
 trueP <- 0.65
 # set the sample size for each draw
-n <- 30
+n <- 20
 # set the number of draws 
 noDraws <- 2000
 set.seed(222)
@@ -64,25 +64,25 @@ colnames(dat) <- paste("Draw",1:noDraws,sep="")
 
 # ECIC step #1
 # compute the IC under each model in the model set for each sample size
-ICComps <- NULL
+ICComps <- matrix(NA,nrow=MLen,ncol=noDraws)
 for(j in 1:MLen)
 {
   tempICs <- -1*apply(X=dat,MARGIN=2,FUN=function(x) LLBern(x,p=M[j]))
-  ICComps <- rbind(ICComps,tempICs)
+  ICComps[j,] <- tempICs
 }
 # columns are draws and rows are the IC evaluated under different parameter values
-rownames(ICComps) <- paste("ICVal,p=",M,sep="")
+rownames(ICComps) <- paste("IC Under p=",M,sep="")
+colnames(ICComps) <- paste("Draw",1:noDraws,sep="")
 
 # ECIC step #2
 # apply which.min(x) across each column in ICComps 
 # to determine the observed best models
 # note 1 corresponds to p=0.5, 2 to p=0.65, and 3 to 0.75
-MbVec <- apply(X=ICComps,MARGIN=2,FUN=function(x) which.min(x))
+MbVec <- apply(X=ICComps,MARGIN=2,FUN=function(x) M[which.min(x)])
 
 # make barplot for the percentage of the time each model was chosen as best
-# note 1 corresponds to p=0.5, 2 to p=0.65, and 3 to 0.75
 tempTable <- table(MbVec)
-barplot(tempTable/noDraws,main=paste("Dist. of Best Observed Models  (2 is true model)\n n=",n))
+barplot(tempTable/noDraws,main=paste("Dist. of Best Observed Models  (p=0.65 is true model)\n n=",n))
 
 # ECIC step #3
 # compute the observed DGOFs
@@ -93,7 +93,7 @@ hist(obsDGOFs,main="Distribution of the Observed DGOFs")
 N1 <- 2000
 # sample size for simulating the DGOF distribution under the assumption that an alternative model is true
 N2 <- 4000
-# pre-specified type-1 error rate
+# pre-specified type 1 error rate
 alpha <- 0.05
 
 # compute data from simulated models in ECIC step #4 in 
@@ -113,8 +113,8 @@ for(j in 1:MLen) #  j indexes the assumed true probability
   simDat2List[[j]] <- matrix(data=simDat2List[[j]],nrow=n,ncol=N2)
   colnames(simDat2List[[j]]) <- paste("Draw",1:N2,sep="")
 }
-names(simDat1List) <- paste("p=",M,sep="")
-names(simDat2List) <- paste("p=",M,sep="")
+names(simDat1List) <- paste("True p=",M,sep="")
+names(simDat2List) <- paste("True p=",M,sep="")
 
 # each element in these lists will hold matrices of the -LL's for all draws 
 # under all the probabilities in the model set 
@@ -122,50 +122,55 @@ ICsSimDat1 <- list()
 ICsSimDat2 <- list()
 for(j in 1:MLen) # j indexes the assumed true probability 
 {
-  tempMat1 <- NULL # 3XN1 matrix to store -LL's for the draws of n=tempN,p=M[j] 
-  tempMat2 <- NULL # 3XN1 matrix to store -LL's for the draws of n=tempN,p=M[j]
-  tempDraws1 <- simDat1List[[j]] # draws of n=tempN and prob M[j]
-  tempDraws2 <- simDat2List[[j]] # draws of n=tempN size n and prob M[j]
+  # MLenXN1 matrix to store -LL's 
+  tempMat1 <- matrix(NA,nrow=MLen,ncol=N1)
+  colnames(tempMat1) <- paste("Draw",1:N1,sep="")
+  # MLenXN2 matrix to store -LL's 
+  tempMat2 <- matrix(NA,nrow=MLen,ncol=N2)
+  colnames(tempMat2) <- paste("Draw",1:N2,sep="")
+  tempDraws1 <- simDat1List[[j]] 
+  tempDraws2 <- simDat2List[[j]] 
   for(k in 1:MLen) # compute -LL's under different parameters in the model set
   {
     tempICs1 <- -1*apply(X=tempDraws1,MARGIN=2,FUN=function(x) LLBern(x,p=M[k]))
     tempICs2 <- -1*apply(X=tempDraws2,MARGIN=2,FUN=function(x) LLBern(x,p=M[k]))
-    tempMat1 <- rbind(tempMat1,tempICs1)
-    tempMat2 <- rbind(tempMat2,tempICs2)
+    tempMat1[k,] <- tempICs1
+    tempMat2[k,] <- tempICs2
   }
   ICsSimDat1[[j]] <- tempMat1
   ICsSimDat2[[j]] <- tempMat2
   rownames(ICsSimDat1[[j]]) <- paste("-LL Under p=",M,sep="")
   rownames(ICsSimDat2[[j]]) <- paste("-LL Under p=",M,sep="")
 }
-names(ICsSimDat1) <- paste("Data Generated w/ p=",M,sep="")
-names(ICsSimDat2) <- paste("Data Generated w/ p=",M,sep="")
+names(ICsSimDat1) <- paste("True p=",M,sep="")
+names(ICsSimDat2) <- paste("True p=",M,sep="")
 
-# determine the model with the minimum IC for each set of draws
+# determine the models with the minimum IC for each set of draws
 minICList <- list()
-for(j in 1:MLen) # j indexes assumed true parameter
+for(j in 1:MLen) # j indexes the assumed true parameter
 {
-  minICList[[j]] <- apply(ICsSimDat1[[j]],MARGIN=2,FUN=function(x) which.min(x))
+  minICList[[j]] <- apply(ICsSimDat1[[j]],MARGIN=2,FUN=function(x) M[which.min(x)])
 }
-names(minICList) <- paste("Data Generated w/ p=",M,sep="")
+names(minICList) <- paste("True p=",M,sep="")
 
 # create a matrix that holds P_i(g(F)=M_b)
 piHatMat <- matrix(data=NA,nrow=MLen,ncol=MLen)
-rownames(piHatMat) <- paste("true P=",M,sep="")
-colnames(piHatMat) <- paste("% P=",M," chosen ",sep="")
+rownames(piHatMat) <- paste("true p=",M,sep="")
+colnames(piHatMat) <- paste("% of time p=",M," observed best ",sep="")
 for(j in 1:MLen) # indexes the true generating probability
 {
   for(k in 1:MLen) # indexes the times that the kth prob is selected as best
   {
-    piHatMat[j,k] <- sum(minICList[[j]]==k)/N1
+    piHatMat[j,k] <- sum(minICList[[j]]==M[k])/N1
   }
 }
 
 # list to store the quantiles from alpha/P(Mb=M)
 tauHatMat <- alpha/piHatMat
 tauHatMat <- alpha/piHatMat
-# if alpha/pi_hat >1, adjusted the value down to 1
+# if alpha/pi_hat >1, adjust the value down to 1
 tauHatMat[tauHatMat>1] <- 1
+colnames(tauHatMat) <- paste("tauth percentile using (p=",M," observed best) ",sep="")
 
 # compute the DGOF distributions as in step 4c) of ECIC
 DGOFList <- list()
@@ -175,15 +180,16 @@ for(j in 1:MLen) # index the true generating probability
   # matrix to store the DGOF distributions under the assumption that model k is
   # the observed best index
   tempMat <- matrix(NA,nrow=MLen,ncol=N2)
+  colnames(tempMat) <- paste("Draw",1:N2,sep="")
   for(k in 1:MLen) #index the model assumed to be best
   {
     tempDGOFs <- apply(tempDat,MARGIN=2,FUN=function(x) DGOFSimComp(x,MbInd=k))
     tempMat[k,] <- tempDGOFs # store row as DGOF distribution
   }
   DGOFList[[j]] <- tempMat
-  rownames(DGOFList[[j]]) <- paste("DGOFs,M_b=",1:3,sep="")
+  rownames(DGOFList[[j]]) <- paste("DGOFs,M_b=",M,sep="")
 }
-names(DGOFList) <- paste("p=",M,sep="")
+names(DGOFList) <- paste("True p=",M,sep="")
 # print the number of unique values for each DGOF distribution
 length(unique(DGOFList[[1]][1,]))
 length(unique(DGOFList[[1]][2,]))
@@ -195,30 +201,45 @@ length(unique(DGOFList[[3]][1,]))
 length(unique(DGOFList[[3]][2,]))
 length(unique(DGOFList[[3]][3,]))
 
+# plot DGOF distributions and quantiles
+for(i in 1:MLen)
+{
+  trueGenModTemp <- M[i] #fix the true generating probability of a DGOF dist.
+  for(j in 1:MLen)
+  {
+    bestObsModTemp <- M[j] #fix the observed best model
+    tempTauRound <- round(tauHatMat[i,j],3)
+    tempQuant <- quantile(DGOFList[[i]][j,],tauHatMat[i,j])
+    hist(DGOFList[[i]][j,],main=paste("DGOF: True p=",trueGenModTemp,",Obs. Best p=",bestObsModTemp,"\n tau (red line)=",tempTauRound),xlab="Deltaf")
+    abline(v=tempQuant,col="red")
+  }
+}
+
 # ECIC steps #4 and #5
 # go through each of the alternative models, assume they are true, and compute quantiles
 # i indexes sample size, j indexes models in the alternative set, and k indexes models in the full set
-modelInds <- 1:3
- 
 # matrix to store the decision thresholds
 thresholds <- matrix(NA,nrow=noDraws,ncol=MLen-1)
 # vector to store accept or reject decisions
 aOrRVec <- rep(NA,noDraws)
-for(j in 1:noDraws) # go through each draw for and perform ECIC
+for(j in 1:noDraws) # go through each observation and perform ECIC
 {
-  # identify the observed best model
-  tempMbInd <- MbVec[j]
+  
+  # get the element index of the best observed model 
+  tempMbInd <- which(M==tempMb)
   # identify the observed DGOF
   tempObsDGOF <- obsDGOFs[j]
   # identify the alternative models
-  altModelInds <- modelInds[-tempMbInd]
+  altModels <- M[-tempMbInd]
   tempDGOFQuantiles <- rep(NA,MLen-1)
   for(k in 1:(MLen-1)) # assume k is index for the true model
   {
     # now just retrieve the quantile and DGOF distribution
     # to compare it to the observed DGOF
-    tempTau <- tauHatMat[altModelInds[k],tempMbInd]
-    tempDGOFs <- DGOFList[[altModelInds[k]]][tempMbInd,]
+    curAltModel <- altModels[k]
+    curAltModelInd <- which(M==curAltModel)
+    tempTau <- tauHatMat[curAltModelInd,tempMbInd]
+    tempDGOFs <- DGOFList[[curAltModelInd]][tempMbInd,]
     tempDGOFQuantiles[k] <- quantile(tempDGOFs,probs=tempTau)
   }
   thresholds[j,] <- tempDGOFQuantiles
