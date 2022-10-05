@@ -53,7 +53,7 @@ DGOFSimComp <- function(ICScores,MbInd)
 #####################################################################
 
 # store parameters for the model set 
-M <- c(2.5,4,5)
+M <- c(3.5,4,4.5,5)
 sig=1
 # store the cardinality of the model set
 MLen <- length(M)
@@ -66,7 +66,7 @@ MLen <- length(M)
 trueMu1 <- 4
 trueMu2 <- 4.3
 # set different sample sizes
-ns <- c(3,6,10,15,20)
+ns <- c(3,6,10,15,20) # 15,20
 # store the cardinality of the sample sizes
 nsLen <- length(ns)
 # set the number of draws for each sample size
@@ -347,13 +347,16 @@ for(i in 1:nsLen) # index sample size
       curAltModelInd <- which(M==curAltModel)
       tempTau <- tauHatList[[i]][curAltModelInd,tempMbInd]
       tempDGOFs <- DGOFList[[i]][[curAltModelInd]][tempMbInd,]
-      tempDGOFQuantiles[k] <- quantile(tempDGOFs,probs=tempTau)
+      if(length(tempDGOFs[tempDGOFs<0])>0)
+        tempDGOFQuantiles[k] <- quantile(tempDGOFs[tempDGOFs<0],probs=tempTau)
+      else
+        tempDGOFQuantiles[k] <- max(tempDGOFs)
     }
     tempMatrix[j,] <- tempDGOFQuantiles
     # take the alternative model quantile estimates
     tempFinQuantile <- min(tempDGOFQuantiles)
     # store 1 if observed model is chosen as best and 0 otherwise
-    tempAorRVec[j] <- ifelse(test=tempObsDGOF<tempFinQuantile,yes=1,no=0)
+    tempAorRVec[j] <- ifelse(test=tempObsDGOF<=tempFinQuantile,yes=1,no=0)
   }
   thresholds[[i]] <- tempMatrix
   aorRList[[i]] <- tempAorRVec
