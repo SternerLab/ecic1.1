@@ -265,7 +265,7 @@ for(i in 1:nsLen) # indexes the sample size
   {
     for(k in 1:MLen) # indexes the times that the kth prob is selected as best
     {
-      tempMat[j,k] <- sum(minICList[[i]][[j]]==k)/N1
+      tempMat[j,k] <- sum(minICList[[i]][[j]]==M[k])/N1
     }
   }
   piHatList[[i]] <- tempMat
@@ -299,14 +299,14 @@ for(i in 1:nsLen)
 
 for(i in 1:nsLen) # index the sample size
 {
-  for(j in 1:MLen) # index the true generating probability 
+  for(j in 1:MLen) # index the true generating mean
   {
     tempDat <- ICsSimDat2[[i]][[j]]
     # matrix to store the DGOF distributions under the assumption that model k is
     # the observed best index
     tempMat <- matrix(NA,nrow=MLen,ncol=N2)
     colnames(tempMat) <- paste("Draw",1:N2,sep="")
-    for(k in 1:MLen) #index the model assumed to be best
+    for(k in 1:MLen) #index the model assumed to be best (fix Mbs)
     {
       tempDGOFs <- apply(tempDat,MARGIN=2,FUN=function(x) DGOFSimComp(x,MbInd=k))
       tempMat[k,] <- tempDGOFs # store row as DGOF distribution
@@ -369,9 +369,9 @@ for(i in 1:nsLen)
 
 # take a look at type 1 error rate
 # subset assess list by only when a decision was made i.e. second row = 1
-decAssessList <- lapply(assessList,FUN=function(x) x[,x[2,]==1])
+decAssessList <- lapply(X=assessList,FUN=function(x) x[,x[2,]==1])
 # compute type 1 error rate
-t1ErrorRates <- sapply(decAssessList,FUN=function(x) sum(x[1,]!=trueMu1)/noDraws)
+t1ErrorRates <- sapply(X=decAssessList,FUN=function(x) sum(x[1,]!=trueMu1)/noDraws)
 plot(x=ns,y=t1ErrorRates,main="Type 1 Error Rates by Sample Size",
      xlab="Sample Size",ylab="% of Time No Decision Made",pch=16)
 
