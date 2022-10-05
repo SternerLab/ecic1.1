@@ -64,7 +64,7 @@ MLen <- length(M)
 truePS1 <- 0.65
 truePS2 <- 0.68
 # set different sample sizes
-ns <- c(5,15,30,70,100,300,500,800,1000)
+ns <- c(5,15,20,25,30,40,50,70,150)
 # store the cardinality of the sample sizes
 nsLen <- length(ns)
 # set the number of draws for each sample size
@@ -185,7 +185,8 @@ for(i in 1:nsLen) # i indexes sample sizes,
     simDat2List[[i]][[j]] <- matrix(data=simDat2List[[i]][[j]],nrow=tempN,ncol=N2)
     colnames(simDat2List[[i]][[j]]) <- paste("Draw",1:N2,sep="")
   }
-  names(simDat1List[[i]]) <- names(simDat2List[[i]]) <- paste("True p=",M,sep="")
+  names(simDat1List[[i]]) <- paste("True p=",M,sep="")
+  names(simDat2List[[i]]) <- paste("True p=",M,sep="")
 }
 names(simDat1List) <- paste("Draws of n=",ns)
 names(simDat2List) <- paste("Draws of n=",ns)
@@ -376,6 +377,67 @@ rightObsUndec <- sapply(noDecAssessList,FUN=function(x) sum(x[1,]==truePS1)/noDr
 # there will not be a point corresponding to the sample size on this following plot
 plot(x=ns,y=rightObsUndec,main="Percentage of Time True Model Observed When No Decision Made",
      xlab="Sample Size",ylab="% of Time No Decision Made",pch=16)
+# take a look at type 1 error rate
+# subset assess list by only when a decision was made i.e. second row = 1
+decAssessList <- lapply(assessList,FUN=function(x) x[,x[2,]==1])
+# compute type 1 error rate
+t1ErrorRates <- sapply(decAssessList,FUN=function(x) sum(x[1,]!=truePS1)/noDraws)
+plot(x=ns,y=t1ErrorRates,main="Type 1 Error Rates by Sample Size",
+     xlab="Sample Size",ylab="% of Time No Decision Made",pch=16)
+
+# Due to the discreteness of the DGOF distribution, we cannot precisely control the 
+# error rates. Let's see what happens when we use the use the next smallest value
+# as the quantile for a more conservative estimate
+aorRList <- list()
+# list to store the decision thresholds
+thresholds <- list()
+
+for(i in 1:nsLen) # index sample size
+{
+  tempAorRVec <- rep(NA,noDraws)
+  tempMatrix <- matrix(NA,nrow=noDraws,ncol=MLen-1) 
+  for(j in 1:noDraws) #go through each draw for each sample size and perform ECIC
+  {
+    # identify the observed best model
+    tempMbInd <- which(M==MbList[[i]][j])
+    # identify the observed DGOF
+    tempObsDGOF <- obsDGOFs[[i]][j]
+    # identify the alternative models
+    altModels <- M[-tempMbInd]
+    tempDGOFQuantiles <- rep(NA,MLen-1)
+    for(k in 1:(MLen-1)) # assume k is index for the true model
+    {
+      # now just retrieve the quantile and DGOF distribution
+      # to compare it to the observed DGOF
+      curAltModel <- altModels[k]
+      curAltModelInd <- which(M==curAltModel)
+      tempTau <- tauHatList[[i]][curAltModelInd,tempMbInd]
+      tempDGOFs <- DGOFList[[i]][[curAltModelInd]][tempMbInd,]
+      uniqueDGOFs <- sort(unique(tempDGOFs))
+      tempQuant <- quantile(tempDGOFs,probs=tempTau)
+      tempQuantInd <- which(uniqueDGOFs==tempQuant)
+      # adjust quantile to next smallest value if there exists one
+      if(tempQuantInd>1)
+        tempQuant <- uniqueDGOFs[tempQuantInd-1]
+      tempDGOFQuantiles[k] <- tempQuant
+    }
+    tempMatrix[j,] <- tempDGOFQuantiles
+    # take the alternative model quantile estimates
+    tempFinQuantile <- min(tempDGOFQuantiles)
+    # store 1 if observed model is chosen as best and 0 otherwise
+    tempAorRVec[j] <- ifelse(test=tempObsDGOF<tempFinQuantile,yes=1,no=0)
+  }
+  thresholds[[i]] <- tempMatrix
+  aorRList[[i]] <- tempAorRVec
+  print(i)
+}
+
+# assess observed best model with ECIC choice
+assessList <- list()
+for(i in 1:nsLen)
+{
+  assessList[[i]] <- rbind(MbList[[i]],aorRList[[i]])
+}
 # take a look at type 1 error rate
 # subset assess list by only when a decision was made i.e. second row = 1
 decAssessList <- lapply(assessList,FUN=function(x) x[,x[2,]==1])
@@ -652,7 +714,7 @@ for(i in 1:nsLen)
 }
 
 # plot the percentage of the time no decision is made by sample size
-fracNoDec <- sapply(aorRList,FUN=function(x) sum(x==0)/length(x))
+fracNoDec <- sapply(aorRList,FUN=function(x) sum(x==0)/noDraws)
 plot(x=ns,y=fracNoDec,main="Percentage of Time No Decision is Made by Sample Size",
      xlab="Sample Size",ylab="% of Time No Decision Made",pch=16)
 
