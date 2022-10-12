@@ -270,22 +270,22 @@ for(i in 1:nsLen) # indexes the sample size
 names(piHatList) <- paste("Draws of n=",ns,sep="")
 
 # list to store the quantiles from alpha/P(Mb=M)
-tauHatList <- list()
-for(i in 1:nsLen)
-{
-  tauHatList[[i]] <- list()
-}
+# tauHatList <- list()
+# for(i in 1:nsLen)
+#{
+#  tauHatList[[i]] <- list()
+#}
 
-for(i in 1:nsLen)
-{
-  tempMat <- piHatList[[i]]
-  tempMat <- alpha/tempMat
+#for(i in 1:nsLen)
+#{
+#  tempMat <- piHatList[[i]]
+#  tempMat <- alpha/tempMat
   # if alpha/pi_hat >1, adjust the value down to 1
-  tempMat[tempMat>1] <- 1
-  colnames(tempMat) <- paste("tauth percentile using (p=",M," observed best) ",sep="")
-  tauHatList[[i]] <- tempMat
-}
-names(tauHatList) <- paste("Draws of n=",ns,sep="")
+#  tempMat[tempMat>1] <- 1
+#  colnames(tempMat) <- paste("tauth percentile using (p=",M," observed best) ",sep="")
+#  tauHatList[[i]] <- tempMat
+#}
+#names(tauHatList) <- paste("Draws of n=",ns,sep="")
 
 # compute the DGOF distributions as in step 4c) of ECIC
 DGOFList <- list()
@@ -342,7 +342,10 @@ for(i in 1:nsLen) # index sample size
       # to compare it to the observed DGOF
       curAltModel <- altModels[k]
       curAltModelInd <- which(M==curAltModel)
-      tempTau <- tauHatList[[i]][curAltModelInd,tempMbInd]
+      probThisFalseMbInd <-piHatList[[i]][curAltModelInd,tempMbInd]
+      totalProbFalseMb <- sum(piHatList[[i]][curAltModelInd,-curAltModelInd])
+      tempTau <- alpha*probThisFalseMbInd/totalProbFalseMb
+      if(tempTau>1) tempTau <- 1
       tempDGOFs <- DGOFList[[i]][[curAltModelInd]][tempMbInd,]
       tempDGOFQuantiles[k] <- quantile(tempDGOFs,probs=tempTau)
     }
@@ -364,26 +367,19 @@ for(i in 1:nsLen)
   assessList[[i]] <- rbind(MbList[[i]],aorRList[[i]])
 }
 
-# plot the percentage of the time no decision is made by sample size
-fracNoDec <- sapply(aorRList,FUN=function(x) sum(x==0)/length(x))
-plot(x=ns,y=fracNoDec,main="Percentage of Time No Decision is Made by Sample Size",
-     xlab="Sample Size",ylab="% of Time No Decision Made",pch=16)
-
-# Look at percentage of times the true model was observed as best but no decision was made
-# subset assessList to only contain observations where with no decision i.e. 0
-noDecAssessList <- lapply(assessList,FUN=function(x) x[,x[2,]==0])
-rightObsUndec <- sapply(noDecAssessList,FUN=function(x) sum(x[1,]==truePS1)/noDraws)
-# note that once a decision is always made (which occurs asymptotically)
-# there will not be a point corresponding to the sample size on this following plot
-plot(x=ns,y=rightObsUndec,main="Percentage of Time True Model Observed When No Decision Made",
-     xlab="Sample Size",ylab="% of Time No Decision Made",pch=16)
+DecisionRates <- sapply(X=assessList,FUN=function(x) sum(x[2,])/noDraws)
+plot(x=ns,y=DecisionRates,main="Proportion of runs a model was selected",
+     xlab="Sample Size",ylab="% of a model was selected",pch=16,ylim = c(0,1))
 # take a look at type 1 error rate
 # subset assess list by only when a decision was made i.e. second row = 1
-decAssessList <- lapply(assessList,FUN=function(x) x[,x[2,]==1])
+decAssessList <- lapply(X=assessList,FUN=function(x) x[,x[2,]==1])
 # compute type 1 error rate
-t1ErrorRates <- sapply(decAssessList,FUN=function(x) sum(x[1,]!=truePS1)/noDraws)
-plot(x=ns,y=t1ErrorRates,main="Type 1 Error Rates by Sample Size",
-     xlab="Sample Size",ylab="% of Time No Decision Made",pch=16)
+t1ErrorRates <- sapply(X=decAssessList,FUN=function(x) sum(x[1,]!=truePS1)/noDraws)
+plot(x=ns,y=t1ErrorRates,main=c("Type 1 Error Rates by Sample Size at alpha=",alpha),
+     xlab="Sample Size",ylab="% of Time Wrong Best Model Selected",pch=16,ylim = c(0,2*alpha))
+CorrectRates <- sapply(X=decAssessList,FUN=function(x) sum(x[1,]==truePS1)/noDraws)
+plot(x=ns,y=CorrectRates,main="Rate that correct model was selected",
+     xlab="Sample Size",ylab="% of Time correct model chosen",pch=16,ylim = c(0,1))
 
 # Due to the discreteness of the DGOF distribution, we cannot precisely control the 
 # error rates. Let's see what happens when we use the use the next smallest value
@@ -411,10 +407,14 @@ for(i in 1:nsLen) # index sample size
       # to compare it to the observed DGOF
       curAltModel <- altModels[k]
       curAltModelInd <- which(M==curAltModel)
-      tempTau <- tauHatList[[i]][curAltModelInd,tempMbInd]
+      probThisFalseMbInd <-piHatList[[i]][curAltModelInd,tempMbInd]
+      totalProbFalseMb <- sum(piHatList[[i]][curAltModelInd,-curAltModelInd])
+      tempTau <- alpha*probThisFalseMbInd/totalProbFalseMb
+      if(tempTau>1) tempTau <- 1
       tempDGOFs <- DGOFList[[i]][[curAltModelInd]][tempMbInd,]
       uniqueDGOFs <- sort(unique(tempDGOFs))
-      tempQuant <- quantile(tempDGOFs,probs=tempTau)
+      # check on type here later
+      tempQuant <- quantile(tempDGOFs,probs=tempTau,type=1)
       tempQuantInd <- which(uniqueDGOFs==tempQuant)
       # adjust quantile to next smallest value if there exists one
       if(tempQuantInd>1)
@@ -438,13 +438,20 @@ for(i in 1:nsLen)
 {
   assessList[[i]] <- rbind(MbList[[i]],aorRList[[i]])
 }
+
+DecisionRates <- sapply(X=assessList,FUN=function(x) sum(x[2,])/noDraws)
+plot(x=ns,y=DecisionRates,main="Proportion of runs a model was selected",
+     xlab="Sample Size",ylab="% of a model was selected",pch=16,ylim = c(0,1))
 # take a look at type 1 error rate
 # subset assess list by only when a decision was made i.e. second row = 1
-decAssessList <- lapply(assessList,FUN=function(x) x[,x[2,]==1])
+decAssessList <- lapply(X=assessList,FUN=function(x) x[,x[2,]==1])
 # compute type 1 error rate
-t1ErrorRates <- sapply(decAssessList,FUN=function(x) sum(x[1,]!=truePS1)/noDraws)
-plot(x=ns,y=t1ErrorRates,main="Type 1 Error Rates by Sample Size",
-     xlab="Sample Size",ylab="% of Time No Decision Made",pch=16)
+t1ErrorRates <- sapply(X=decAssessList,FUN=function(x) sum(x[1,]!=truePS1)/noDraws)
+plot(x=ns,y=t1ErrorRates,main=c("Type 1 Error Rates by Sample Size at alpha=",alpha),
+     xlab="Sample Size",ylab="% of Time Wrong Best Model Selected",pch=16,ylim = c(0,2*alpha))
+CorrectRates <- sapply(X=decAssessList,FUN=function(x) sum(x[1,]==truePS1)/noDraws)
+plot(x=ns,y=CorrectRates,main="Rate that correct model was selected",
+     xlab="Sample Size",ylab="% of Time correct model chosen",pch=16,ylim = c(0,1))
 
 #####################################################################
 #                      Run Study for Scenario 2
@@ -535,7 +542,8 @@ for(i in 1:nsLen) # i indexes sample sizes,
     simDat2List[[i]][[j]] <- matrix(data=simDat2List[[i]][[j]],nrow=tempN,ncol=N2)
     colnames(simDat2List[[i]][[j]]) <- paste("Draw",1:N2,sep="")
   }
-  names(simDat1List[[i]]) <- names(simDat2List[[i]]) <- paste("True p=",M,sep="")
+  names(simDat1List[[i]]) <- paste("True p=",M,sep="")
+  names(simDat2List[[i]]) <- paste("True p=",M,sep="")
 }
 names(simDat1List) <- paste("Draws of n=",ns)
 names(simDat2List) <- paste("Draws of n=",ns)
@@ -619,22 +627,22 @@ for(i in 1:nsLen) # indexes the sample size
 names(piHatList) <- paste("Draws of n=",ns,sep="")
 
 # list to store the quantiles from alpha/P(Mb=M)
-tauHatList <- list()
-for(i in 1:nsLen)
-{
-  tauHatList[[i]] <- list()
-}
+# tauHatList <- list()
+# for(i in 1:nsLen)
+#{
+#  tauHatList[[i]] <- list()
+#}
 
-for(i in 1:nsLen)
-{
-  tempMat <- piHatList[[i]]
-  tempMat <- alpha/tempMat
-  # if alpha/pi_hat >1, adjust the value down to 1
-  tempMat[tempMat>1] <- 1
-  colnames(tempMat) <- paste("tauth percentile using (p=",M," observed best) ",sep="")
-  tauHatList[[i]] <- tempMat
-}
-names(tauHatList) <- paste("Draws of n=",ns,sep="")
+#for(i in 1:nsLen)
+#{
+#  tempMat <- piHatList[[i]]
+#  tempMat <- alpha/tempMat
+# if alpha/pi_hat >1, adjust the value down to 1
+#  tempMat[tempMat>1] <- 1
+#  colnames(tempMat) <- paste("tauth percentile using (p=",M," observed best) ",sep="")
+#  tauHatList[[i]] <- tempMat
+#}
+#names(tauHatList) <- paste("Draws of n=",ns,sep="")
 
 # compute the DGOF distributions as in step 4c) of ECIC
 DGOFList <- list()
@@ -691,7 +699,10 @@ for(i in 1:nsLen) # index sample size
       # to compare it to the observed DGOF
       curAltModel <- altModels[k]
       curAltModelInd <- which(M==curAltModel)
-      tempTau <- tauHatList[[i]][curAltModelInd,tempMbInd]
+      probThisFalseMbInd <-piHatList[[i]][curAltModelInd,tempMbInd]
+      totalProbFalseMb <- sum(piHatList[[i]][curAltModelInd,-curAltModelInd])
+      tempTau <- alpha*probThisFalseMbInd/totalProbFalseMb
+      if(tempTau>1) tempTau <- 1
       tempDGOFs <- DGOFList[[i]][[curAltModelInd]][tempMbInd,]
       tempDGOFQuantiles[k] <- quantile(tempDGOFs,probs=tempTau)
     }
@@ -713,24 +724,17 @@ for(i in 1:nsLen)
   assessList[[i]] <- rbind(MbList[[i]],aorRList[[i]])
 }
 
-# plot the percentage of the time no decision is made by sample size
-fracNoDec <- sapply(aorRList,FUN=function(x) sum(x==0)/noDraws)
-plot(x=ns,y=fracNoDec,main="Percentage of Time No Decision is Made by Sample Size",
-     xlab="Sample Size",ylab="% of Time No Decision Made",pch=16)
-
-# Look at percentage of times the true model was observed as best but no decision was made
-# subset assessList to only contain observations where with no decision i.e. 0
-noDecAssessList <- lapply(assessList,FUN=function(x) x[,x[2,]==0])
-rightObsUndec <- sapply(noDecAssessList,FUN=function(x) sum(x[1,]==truePS1)/noDraws)
-# note that once a decision is always made (which occurs asymptotically)
-# there will not be a point corresponding to the sample size on this following plot
-plot(x=ns,y=rightObsUndec,main="Percentage of Time True Model Observed When No Decision Made",
-     xlab="Sample Size",ylab="% of Time No Decision Made",pch=16)
+DecisionRates <- sapply(X=assessList,FUN=function(x) sum(x[2,])/noDraws)
+plot(x=ns,y=DecisionRates,main="Proportion of runs a model was selected",
+     xlab="Sample Size",ylab="% of a model was selected",pch=16,ylim = c(0,1))
 # take a look at type 1 error rate
 # subset assess list by only when a decision was made i.e. second row = 1
-decAssessList <- lapply(assessList,FUN=function(x) x[,x[2,]==1])
+decAssessList <- lapply(X=assessList,FUN=function(x) x[,x[2,]==1])
 # compute type 1 error rate
-t1ErrorRates <- sapply(decAssessList,FUN=function(x) sum(x[1,]!=truePS1)/noDraws)
-plot(x=ns,y=t1ErrorRates,main="Type 1 Error Rates by Sample Size",
-     xlab="Sample Size",ylab="% of Time No Decision Made",pch=16)
+t1ErrorRates <- sapply(X=decAssessList,FUN=function(x) sum(x[1,]!=truePS1)/noDraws)
+plot(x=ns,y=t1ErrorRates,main=c("Type 1 Error Rates by Sample Size at alpha=",alpha),
+     xlab="Sample Size",ylab="% of Time Wrong Best Model Selected",pch=16,ylim = c(0,2*alpha))
+CorrectRates <- sapply(X=decAssessList,FUN=function(x) sum(x[1,]==truePS1)/noDraws)
+plot(x=ns,y=CorrectRates,main="Rate that correct model was selected",
+     xlab="Sample Size",ylab="% of Time correct model chosen",pch=16,ylim = c(0,1))
 
