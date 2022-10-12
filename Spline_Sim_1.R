@@ -1,267 +1,457 @@
 #####################################################################
-#                      Load Packages/Data Generation
+#                       R Ad Hoc Functions
 #####################################################################
 
-library(ECIC1.1Dev)
-library(paleoTS)
+# a general function for computing the DGOF
+DGOFGenComp <- function(ICScores)
+{
+  DGOF <- min(ICScores)-min(ICScores[-which.min(ICScores)])
+  return(DGOF)
+}
+
+#####################################################################
+#             Load Packages, Rcpp Script, and Data Generation
+#####################################################################
+
+library(Rcpp)
+library(RcppArmadillo)
 library(splines)
+# load C++ script that is used for simulation steps in ECIC
+sourceCpp("ENTERPATHWHEREC++FILEISSAVEDHERE\\Spline_Sim_1_RCppCode.cpp")
 
-#####################################################################
-#                      Define Functions
-#####################################################################
-# This function computes the KL divergence for two MVN models
-KLforMVN <- function(Sig1,Sig2,n,mu1,mu2) #Cov Mat's, dimension of MVN model, and means 
-{
-  invSig2 <- solve(Sig2)
-  logDets<- log(det(Sig2)/det(Sig1))
-  sigTr <- sum(diag(invSig2%*%Sig1))
-  musPart <- t(mu2-mu1)%*%invSig2%*%(mu2-mu1)
-  KLDiv <- 0.5*(logDets-n+sigTr+musPart)
-  return(KLDiv)
-}
-
-# intermediary function for pseudo true coefficients
-SigHat <- function(x,w=NULL)
-{
-  #store the number of observations
-  n <- nrow(x)
-  if(is.null(w))
-  {
-    SigEst <- x%*%t(x) 
-  }
-  else
-  {
-    SigEst <- x%*%t(w)
-  }
-  return(SigEst/n)
-}
-# compute the psuedo-true parameter values as in pg. 7 in 
-# Pesaran & Weeks
-psuedoTrueCoefs <- function(trueCoef,trueVar,trueBases,altBases)
-{
-  SigxxInv <- solve(SigHat(altBases))
-  Sigww <- SigHat(trueBases)
-  Sigwx <- SigHat(trueBases,altBases)
-  Sigxw <- SigHat(altBases,trueBases)
-  coefEst <- SigxxInv%*%Sigxw%*%trueCoef
-  varEst <- trueVar + t(trueCoef)%*%(
-    Sigww-Sigwx%*%SigxxInv%*%Sigxw
-  )%*%trueCoef
-  paramEst <- list(coefs=coefEst,var=as.numeric(varEst))
-  return(paramEst)
-}
-#####################################################################
-#                      Generate different spline fits
-#####################################################################
-
-# where to store spline fits
-# wrong spline fit no1 (W for wrong)
-splinesW1 <- list()
-dfW1 <- 3
-# wrong spline fit no2 (W for wrong)
-splinesW2 <- list()
-dfW2 <- 5
-# wrong spline fit, but closest to correct  (Cl for close)
-splinesCl <- list()
-dfCl <- 8
-# spline data that correctly smooths (Co for correct)
-splinesCo <- list()
-# set the true coefficients and variance for the spline
-# knots are at endpoints and quintiles
-coefCo <- c(1,-1,1,-1,1,-1,1)
-varCo <- 0.0036
-dfCo <- 7
-# list to store observations
-ys <- list()
-
-# store the pseudo true parameters for the wrongs fits
-pseudParsW1 <- list()
-pseudParsW2 <- list()
-pseudParsCl <- list()
-
-# randomly sample values between -50 and 50 for the x values
+# specify the interval over which the splines will be simulated
 lowLim <- -10
 upLim <- 10
-# set three different total observation points
-ns <- c(20) #50, 100,400,800
-# store the observation points in a list
-xs <- list()
-KLMat <- matrix(NA,nrow=3,ncol=length(ns))
-colnames(KLMat) <- ns
-rownames(KLMat) <- c("W1","W2","Cl")
-manyX <- seq(from=lowLim,to=upLim,length.out=200)
-manyBase <- bs(manyX,df=dfCo,degree=3)
-manyY <- manyBase%*%coefCo
-for(i in 1:length(ns))
+# vector of saturated time points to plot the true spline and alternative models
+manyX <- seq(from=lowLim,to=upLim,length.out=50000)
+# true knots will be placed at the quintiles
+trueKnots <- quantile(-10:10,probs=c(1/5,2/5,3/5,4/5))
+# create a B-spline basis to plot the true spline
+manyBase <- bs(manyX,knots=trueKnots,degree=3)
+# set the true regression coefficients
+trueCoef <- c(1,-1,1,-1,1,-1,1)
+# evaluate the true spline's response values
+manyY <- manyBase%*%trueCoef
+# plot the true spline
+plot(manyX,manyY,type="l",main=paste("Spline Plots \n
+       Black=True,Red=altM1,Blue=altM2,Purple=altM3"),
+     xlab="x",ylab="y")
+# set up bases for alternative models
+altM1Knots <- quantile(-10:10,probs=1/2) # knot at median
+altM2Knots <- quantile(-10:10,probs=c(1/3,2/3)) # knots at terciles
+altM3Knots <- quantile(-10:10,probs=c(1/6,2/6,3/6,4/6,5/6)) # knots at sextiles
+# create model set of knot locations for the true and alternative models
+# NOTE: we fix the knots locations & degree
+# but not the regression coefficients for the alternative models
+M <- list("trueKnots"=trueKnots,"altM1Knots"=altM1Knots,"altM2Knots"=altM2Knots,
+          "altM3Knots"=altM3Knots)
+MLen <- length(M)
+# fit lm using alternative bases to manyY and manyX to get an idea of how these
+# models compare
+lmaltM1 <- lm(manyY~bs(manyX,knots=altM1Knots,degree=3)-1)
+lmaltM2 <- lm(manyY~bs(manyX,knots=altM2Knots,degree=3)-1)
+lmaltM3 <- lm(manyY~bs(manyX,knots=altM3Knots,degree=3)-1)
+lines(manyX,lmaltM1$fitted.values,col="red")
+lines(manyX,lmaltM2$fitted.values,col="blue")
+lines(manyX,lmaltM3$fitted.values,col="purple")
+rm(lmaltM1)
+rm(lmaltM2)
+rm(lmaltM3)
+rm(manyY)
+rm(manyBase)
+gc()
+# set different sample sizes
+ns <- c(10,15,30)
+nsLen <- length(ns)
+# create a list to store the observed points along the x axis for each sample size
+xPoints <- list()
+basisList <- list()
+for(i in 1:nsLen)
 {
-  xs[[i]] <- seq(from=lowLim,to=upLim,length.out=ns[i])
-  w1BaseTemp <- bs(xs[[i]],df=dfW1,degree=3)
-  w2BaseTemp <- bs(xs[[i]],df=dfW2,degree=3)
-  clBaseTemp <- bs(xs[[i]],df=dfCl,degree=3)
-  coBaseTemp <- bs(xs[[i]],df=dfCo,degree=3)
-  w1PseudParsTemp <- psuedoTrueCoefs(trueCoef=coefCo,trueVar=varCo,
-                                    trueBases=t(coBaseTemp),altBases=t(w1BaseTemp))
-  w2PseudParsTemp <- psuedoTrueCoefs(trueCoef=coefCo,trueVar=varCo,
-                                     trueBases=t(coBaseTemp),altBases=t(w2BaseTemp))
-  clPseudParsTemp <- psuedoTrueCoefs(trueCoef=coefCo,trueVar=varCo,
-                                     trueBases=t(coBaseTemp),altBases=t(clBaseTemp))
-  pseudParsW1[[i]] <- w1PseudParsTemp
-  pseudParsW2[[i]] <- w2PseudParsTemp
-  pseudParsCl[[i]] <- clPseudParsTemp
-  ys[[i]] <- coBaseTemp%*%coefCo
-  # compute the KL divergences for the wrong fits vs the true fit
-  # using the quasi-ML estimators in Pesaran & Weeks 
-  KLEstW1 <- KLforMVN(Sig1=diag(ns[i])*varCo,Sig2=diag(ns[i])*pseudParsW1[[i]][[2]],n=ns[i],
-                     mu1=coBaseTemp%*%coefCo,mu2=w1BaseTemp%*%pseudParsW1[[i]][[1]])
-  KLEstW2 <- KLforMVN(Sig1=diag(ns[i])*varCo,Sig2=diag(ns[i])*pseudParsW2[[i]][[2]],n=ns[i],
-                      mu1=coBaseTemp%*%coefCo,mu2=w2BaseTemp%*%pseudParsW2[[i]][[1]])
-  KLEstCl <- KLforMVN(Sig1=diag(ns[i])*varCo,Sig2=diag(ns[i])*pseudParsCl[[i]][[2]],n=ns[i],
-                      mu1=coBaseTemp%*%coefCo,mu2=clBaseTemp%*%pseudParsCl[[i]][[1]])
-  KLMat[,i] <- c(KLEstW1,KLEstW2,KLEstCl)
-  # plot the pseudo-ML estimated means for the over and under smoothed model for each sample size
-  plot(manyX,manyY,type="l",main=paste("Fits W/ Psuedo-ML Ests.,Sample Size=",ns[[i]],"\n
-       Black=Co,Red=W1,Blue=W2,Purple=Cl"),
-       xlab="x",ylab="y",ylim=c(min(ys[[i]])-0.2,max(ys[[i]])+0.2))
-  lines(xs[[i]],w1BaseTemp%*%pseudParsW1[[i]][[1]],col="red")
-  lines(xs[[i]],w2BaseTemp%*%pseudParsW2[[i]][[1]],col="blue")
-  lines(xs[[i]],clBaseTemp%*%pseudParsCl[[i]][[1]],col="purple")
+  basisList[[i]] <- list()
 }
 
-# generate 2,000 draws of each sample size 
-set.seed(222)
-drawSize <- 2000
-datList <- list()
-for(i in 1:length(ns))
+for(i in 1:nsLen)
 {
-  tempN <- ns[i]
-  tempMat <- matrix(data=NA,nrow=tempN,ncol=drawSize)
-  for(j in 1:drawSize)
+  xPoints[[i]] <- seq(from=lowLim,to=upLim,length.out=ns[i])
+}
+
+for(i in 1:nsLen)
+{
+  for(j in 1:MLen)
   {
-    # draw from a normal dist with mean 0 and sd .06
-    tempDraw <- ys[[i]] + rnorm(n=tempN,mean=0,sd=0.06)
-    tempMat[,j] <- tempDraw
+    basisList[[i]][[j]] <- bs(xPoints[[i]],knots=M[[j]],degree=3)
   }
+}
+
+# set the number of draws for each sample size 
+noDraws <- 500
+datList <- list()
+# noise added to generate data
+sig=0.06
+set.seed(222)
+for(i in 1:nsLen)
+{
+  tempXPoints <- xPoints[[i]]
+  tempN <- ns[i]
+  tempMat <- matrix(NA,nrow=tempN,ncol=noDraws)
+  tempBasisVals <- bs(tempXPoints,knots=trueKnots,degree=3)
+  tempYVals <- tempBasisVals%*%trueCoef
+  for(j in 1:noDraws)
+  {
+    draw <- tempYVals + rnorm(tempN,0,sig)
+    tempMat[,j] <- draw
+  }
+  colnames(tempMat) <- paste("Draw",1:noDraws,sep="")
   datList[[i]] <- tempMat
 }
+names(datList) <- paste("Draws of n=",ns,sep="")
 
-# plot just the first draws for each sample size to illustrate what's going on
-for(i in 1:length(ns))
+#####################################################################
+#             Begin ECIC
+#####################################################################
+
+# ECIC step 1
+# fit each of the lms for each model to the data sets
+lmFitList <- list()
+for(i in 1:nsLen)
 {
-  splinesW1[[i]] <- lm(datList[[i]][,1]~bs(xs[[i]],df=dfW1,degree=3))
-  splinesW2[[i]] <- lm(datList[[i]][,1]~bs(xs[[i]],df=dfW2,degree=3))
-  splinesCl[[i]] <- lm(datList[[i]][,1]~bs(xs[[i]],df=dfCl,degree=3))
-  splinesCo[[i]] <- lm(datList[[i]][,1]~bs(xs[[i]],df=dfCo,degree=3))
-  plot(xs[[length(xs)]],ys[[length(ys)]],type="l",main=paste("Spline Fits First Draw, Sample Size=",ns[[i]],"\n
-       Points=Data,Black=Co,Orange=Co Fit,Red=W1,Blue=W2,Purple=Cl"),
-      xlab="x",ylab="y",ylim=c(min(ys[[i]])-0.2,max(ys[[i]])+0.2))
-  points(xs[[i]],datList[[i]][,1],pch=16,cex=0.5)
-  lines(xs[[i]],splinesW1[[i]]$fitted.values,col="red")
-  lines(xs[[i]],splinesW2[[i]]$fitted.values,col="blue")
-  lines(xs[[i]],splinesCl[[i]]$fitted.values,col="purple")
-  lines(xs[[i]],splinesCo[[i]]$fitted.values,col="darkorange3")
+  lmFitList[[i]] <- list()
 }
 
-# determine which model is best by BIC and AIC with the following two model sets
-# M1={W1,W2,Co} # Co should be chosen
-# M2={W1,W2,Cl} # Cl should be chosen
-# compute BICs and AICs for each simulated data sets
-AICList <- list()
+for(j in 1:MLen)
+{
+  lmFitList[[i]][[j]] <- list()
+}
+
+for(i in 1:nsLen) # i indexes sample size
+{
+  tempDat <- datList[[i]]
+  tempX <- xPoints[[i]]
+  for(j in 1:MLen) #j indexes the model
+  {
+    tempBasis <- bs(tempX,knots=M[[j]],degree=3)
+    lmFitList[[i]][[j]] <- apply(X=tempDat,MARGIN=2,FUN=function(x) lm(x~tempBasis-1))
+  }
+  names(lmFitList[[i]]) <- names(M)
+  print(i)
+}
+names(lmFitList) <- paste("Draws of n=",ns,sep="")
+
+# now compute the BIC under each model
 BICList <- list()
-for(i in 1:length(ns))
+for(i in 1:nsLen)
 {
-  splinesTempW1 <- apply(X=datList[[i]],MARGIN=2,FUN=function(x) lm(x~bs(xs[[i]],df=dfW1,degree=3)))
-  splinesTempW2 <- apply(X=datList[[i]],MARGIN=2,FUN=function(x) lm(x~bs(xs[[i]],df=dfW2,degree=3)))
-  splinesTempCl <- apply(X=datList[[i]],MARGIN=2,FUN=function(x) lm(x~bs(xs[[i]],df=dfCl,degree=3)))
-  splinesTempCo <- apply(X=datList[[i]],MARGIN=2,FUN=function(x) lm(x~bs(xs[[i]],df=dfCo,degree=3)))
-  w1BICs <- sapply(X=splinesTempW1,FUN=function(x) BIC(x))
-  w2BICs <- sapply(X=splinesTempW2,FUN=function(x) BIC(x))
-  clBICs <- sapply(X=splinesTempCl,FUN=function(x) BIC(x))
-  coBICs <- sapply(X=splinesTempCo,FUN=function(x) BIC(x))
-  w1AICs <- sapply(X=splinesTempW1,FUN=function(x) AIC(x))
-  w2AICs <- sapply(X=splinesTempW2,FUN=function(x) AIC(x))
-  clAICs <- sapply(X=splinesTempCl,FUN=function(x) AIC(x))
-  coAICs <- sapply(X=splinesTempCo,FUN=function(x) AIC(x))
-  AICList[[i]] <- cbind(w1=w1AICs,w2=w2AICs,cl=clAICs,co=coAICs)
-  BICList[[i]] <- cbind(w1=w1BICs,w2=w2BICs,cl=clBICs,co=coBICs)
+  BICList[[i]] <- list()
+}
+
+for(i in 1:nsLen) # i indexes the sample size
+{
+  tempMat <- matrix(data=NA,nrow=MLen,ncol=noDraws)
+  rownames(tempMat) <- paste("BICs",names(M))
+  for(j in 1:MLen) #j indexes the model
+  {
+    tempBICs <- sapply(lmFitList[[i]][[j]],FUN=function(x) BIC(x))
+    tempMat[j,] <- tempBICs
+  }
+  BICList[[i]] <- tempMat
+}
+names(BICList) <- paste("Draws of n=",ns,sep="")
+
+# ECIC step #2
+# apply which.min(x) across each column of each matrix in BICList 
+MbList <- list()
+for(i in 1:nsLen)
+{
+  MbList[[i]] <- apply(X=BICList[[i]],MARGIN=2,FUN=function(x) names(M)[which.min(x)])
+}
+names(MbList) <- paste("Draws of n=",ns,sep="")
+
+# make barplots for the percentage of the time each model was chosen as best for each sample size
+for(i in 1:nsLen)
+{
+  # get the frequencies of models selected as best
+  tempTable <- table(MbList[[i]])
+  barplot(tempTable/noDraws,main=paste("Dist. of Best Observed Models  (1 is true model)\n n=",ns[i]))
+}
+
+# list to store the observed best DGOF for each draw of each sample size
+obsDGOFs <- list() 
+# ECIC step #3
+# compute the observed DGOFs
+for(i in 1:nsLen)
+{
+  # compute the observed DGOFs for each draw of each sample size
+  obsDGOFs[[i]] <- apply(BICList[[i]],MARGIN=2,FUN=function(x) DGOFGenComp(x))
+}
+names(obsDGOFs) <- paste("Draws of n=",ns,sep="")
+
+rm(BICList)
+gc()
+# sample size for estimating the probability of choosing the observed best model under the assumption an
+# alternative model is true
+N1 <- 500
+# sample size for simulating the DGOF distribution under the assumption that an alternative model is true
+N2 <- 1000
+# pre-specified type-1 error rate
+alpha <- 0.05
+# compute data from simulated models in ECIC step #4 in 
+# advance to ease computational burden
+# simDat1List holds the datasets to estimate \hat{\pi_i}=P_i(g(F)=M_b)
+# simDat2List holds the datasets to estimate the DGOF distributions \Delta f_i
+simDat1List <- list()
+simDat2List <- list()
+# initialize the above lists' elements as lists
+for(i in 1:nsLen)
+{
+  simDat1List[[i]] <- list()
+  simDat2List[[i]] <- list()
+  for(j in 1:MLen)
+  {
+    simDat1List[[i]][[j]] <- list()
+    simDat2List[[i]][[j]] <- list()
+  }
+}
+
+set.seed(19)
+# create matrices of random errors using \hat{\sigma} for each model
+for(i in 1:nsLen) # index the sample sizes
+{
+  tempN <- ns[i]
+  for(j in 1:MLen) # indexes the models in the model set
+  {
+    for(k in 1:noDraws) # index the draws
+    {
+      # compute \hat{\sigma} for current lm fit
+      tempSig <- sqrt(sum(lmFitList[[i]][[j]][[k]]$residuals^2)/tempN) 
+      # get the fitted values for current lm 
+      tempMean <- lmFitList[[i]][[j]][[k]]$fitted.values
+      # add tempMean to a matrix of N(0,tempSig) noise
+      simDat1List[[i]][[j]][[k]] <- tempMean + matrix(rnorm(tempN*N1,mean=0,sd=tempSig),nrow=tempN,ncol=N1) 
+      simDat2List[[i]][[j]][[k]] <- tempMean + matrix(rnorm(tempN*N2,mean=0,sd=tempSig),nrow=tempN,ncol=N2)
+      colnames(simDat1List[[i]][[j]][[k]]) <- paste("Draw",1:N1,sep="")
+      colnames(simDat2List[[i]][[j]][[k]]) <- paste("Draw",1:N2,sep="")
+    }
+    names(simDat1List[[i]][[j]]) <- paste("lm Fit for Obs",1:noDraws)
+    names(simDat2List[[i]][[j]]) <- paste("lm Fit for Obs",1:noDraws)
+  }
+  names(simDat1List[[i]]) <- paste("Generated from",names(M))
+  names(simDat2List[[i]]) <- paste("Generated from",names(M))
   print(i)
 }
-names(AICList) <- names(BICList) <- paste("Sample Size=",ns,sep="")
+names(simDat1List) <- paste("Draws of n=",ns,sep="")
+names(simDat2List) <- paste("Draws of n=",ns,sep="")
 
-# select the best model in both M1 and M2 strictly based on AIC and BIC
-M1SelectAIC <- M2SelectAIC <- rep(NA,length(AICList))
-M1SelectBIC <- M2SelectBIC <- rep(NA,length(BICList))
-for(i in 1:length(BICList))
+# create list of bases to simulate data
+basisMats <- list()
+for(i in 1:nsLen)
 {
-  # choose model based on BIC & AIC alone for # M1={W1,W2,Co}
-  minBICsM1 <- apply(BICList[[i]][,-3],MARGIN=1,FUN=function(x) which.min(x))
-  minAICsM1 <- apply(AICList[[i]][,-3],MARGIN=1,FUN=function(x) which.min(x))
-  M1SelectBIC[i] <- round(sum(minBICsM1==3)/length(minBICsM1),2)
-  M1SelectAIC[i] <- sum(minAICsM1==3)/length(minAICsM1)
-  # choose model based on BIC & AIC alone for # M2={W1,W2,Co}
-  minBICsM2 <- apply(BICList[[i]][,-4],MARGIN=1,FUN=function(x) which.min(x))
-  minAICsM2 <- apply(AICList[[i]][,-4],MARGIN=1,FUN=function(x) which.min(x))
-  M2SelectBIC[i] <- round(sum(minBICsM2==3)/length(minBICsM2),2)
-  M2SelectAIC[i] <- sum(minAICsM2==3)/length(minAICsM2)
-}
-M1SelectBIC
-M1SelectAIC
-M2SelectBIC
-M2SelectAIC
-
-# now apply ECIC for all models for the first observed data set for each sample size
-splinesW1ECIC <- list()
-splinesW2ECIC <- list()
-splinesClECIC <- list()
-splinesCoECIC <- list()
-modNamesW1 <- paste("splineW1,n=",ns,sep="")
-modNamesW2 <- paste("splineW2,n=",ns,sep="")
-modNamesCl <- paste("splineCl,n=",ns,sep="")
-modNamesCo <- paste("splineCo,n=",ns,sep="")
-# ecicModel() extracts info. from the input object and lists them 
-# in a new ecicModel object
-for(i in 1:length(ns))
-{
-  w1Temp <- lm(datList[[i]][,1]~bs(xs[[i]],df=dfW1,degree=3))
-  w2Temp <- lm(datList[[i]][,1]~bs(xs[[i]],df=dfW2,degree=3))
-  clTemp <- lm(datList[[i]][,1]~bs(xs[[i]],df=dfCl,degree=3))
-  coTemp <- lm(datList[[i]][,1]~bs(xs[[i]],df=dfCo,degree=3))
-  splinesW1ECIC[[i]] <- ecicModel(model.name=w1Temp,ID=modNamesW1[i])
-  splinesW2ECIC[[i]] <- ecicModel(model.name=w2Temp,ID=modNamesW2[i])
-  splinesClECIC[[i]] <- ecicModel(model.name=clTemp,ID=modNamesCl[i])
-  splinesCoECIC[[i]] <- ecicModel(model.name=coTemp,ID=modNamesCo[i])
+  basisMats[[i]] <- list()
 }
 
-# create model sets by sample size for M1 and M2
-# ecicModelList() essentially throws errors if an invalid
-# model set is created
-modelSetsM1 <- list()
-modelSetsM2 <- list()
-for(i in 1:length(ns))
+for(i in 1:nsLen)
 {
-  modelSetsM1[[i]] <- ecicModelList(list(splinesW1ECIC[[i]],splinesW2ECIC[[i]],splinesCoECIC[[i]]))
-  modelSetsM2[[i]] <- ecicModelList(list(splinesW1ECIC[[i]],splinesW2ECIC[[i]],splinesClECIC[[i]]))
+  for(j in 1:MLen)
+  {
+    basisMats[[i]][[j]] <- matrix(basisList[[i]][[j]],nrow=nrow(basisList[[i]][[j]]),
+                   ncol=ncol(basisList[[i]][[j]]))
+  }
+  names(basisMats[[i]]) <- paste("Basis Using",names(M))
+}
+names(basisMats) <- paste("Draws of n=",ns,sep="")
+
+# Use C++ code to simulate datasets
+# the RcpplmComps inputs the list of simulated draws from the MLE regression fits 
+# to the observations and a list of the design matrices derived from the model set M
+# matrices of BICs are returned 
+ICsSimDat1 <- RcpplmComps(simDat1List,basisMats)
+# label the elements in ICsSimDat1
+for(i in 1:nsLen)
+{
+  for(j in 1:MLen)
+  {
+    for(k in 1:noDraws)
+    {
+      colnames(ICsSimDat1[[i]][[j]][[k]]) <- paste("BIC Under", names(M))
+    }
+    names(ICsSimDat1[[i]][[j]]) <- paste("lm Fit for Obs",1:noDraws)
+  }
+  names(ICsSimDat1[[i]]) <- paste("Generated from",names(M))
+}
+names(ICsSimDat1) <- paste("Draws of n=",ns,sep="")
+
+# determine the model with the minimum IC for each set of draws
+minICList <- list()
+for(i in 1:nsLen)
+{
+  minICList[[i]] <- list()
+  for(j in 1:MLen)
+    minICList[[i]][[j]] <- list()
 }
 
-#note that ecicModelList() is invoked in the ECIC function so the 
-# above step isn't necessary 
-# apply ECIC to spline models to see what happens asymptotically
-# data=response variable?
-# methods(IC) only shows IC.AIC, no BIC programmed?
-# many warnings at the end
-ECICResultsM1AIC <- list()
-ECICResultsM2AIC <- list()
-for(i in 1:length(ns))
+for(i in 1:nsLen) # i indexes sample size
 {
-  ECICResultsM1AIC[[i]] <- ECIC1.1Dev::ECIC(models=modelSetsM1[[i]],data=datList[[i]][,1],
-                                 alpha=c(0.01,.05,.1),N=1000,ic="AIC")
-  ECICResultsM2AIC[[i]] <- ECIC1.1Dev::ECIC(models=modelSetsM2[[i]],data=datList[[i]][,1],
-                                      alpha=c(0.01,.05,.1),N=1000,ic="AIC")
+  for(j in 1:MLen) # j indexes assumed true parameter
+  {
+    for(k in 1:noDraws)
+    {
+      minICList[[i]][[j]][[k]] <- apply(ICsSimDat1[[i]][[j]][[k]],MARGIN=1,FUN=function(x) names(M)[which.min(x)])
+    }
+    names(minICList[[i]][[j]]) <- paste("lm Fit for Obs",1:noDraws)
+  }
+  names(minICList[[i]]) <- paste("Generated from",names(M))
+  print(i)
+}
+names(minICList) <- paste("Draws of n=",ns,sep="")
+
+# create a list of matrices that hold P_i(g(F)=M_b)
+piHatList <- list()
+for(i in 1:nsLen)
+{
+  piHatList[[i]] <- list()
+  for(k in 1:noDraws)
+  {
+    piHatList[[i]][[k]] <- list()
+  }
+  names(piHatList[[i]]) <- paste("lm Fits for Obs",1:noDraws)
+}
+names(piHatList) <- names(piHatList) <- paste("n=",ns,sep="")
+
+for(i in 1:nsLen) # indexes the sample size
+{
+  for(k in 1:noDraws) # indexes the times that the kth prob is selected as best
+  {
+    tempMat <- matrix(data=NA,nrow=MLen,ncol=MLen)
+    rownames(tempMat) <- paste("true knots=",names(M),sep="")
+    colnames(tempMat) <- paste("% of time knots=",names(M)," chosen ",sep="")
+    for(d in 1:MLen) # index the true knots
+      for(f in 1:MLen) # index the knots being considered for modeling
+        tempMat[d,f] <- sum(minICList[[i]][[d]][[k]]==names(M)[f])/N1
+    piHatList[[i]][[k]] <- tempMat
+  }
+  print(i)
+}
+names(piHatList) <- paste("n=",ns,sep="")
+
+rm(ICsSimDat1)
+rm(minICList)
+gc()
+# list to store the quantiles from alpha/P(Mb=M)
+#tauHatList <- list()
+#for(i in 1:nsLen)
+#{
+#  tauHatList[[i]] <- list()
+#  for(j in 1:MLen)
+#    tauHatList[[i]][[j]] <- list()
+#}
+
+#for(i in 1:nsLen) # indexes the sample size
+#{
+#  for(j in 1:MLen) # indexes the true generating probability
+#  {
+#    for(k in 1:noDraws) # indexes the times that the kth prob is selected as best
+#    {
+#      tempMat <- piHatList[[i]][[j]][[k]]
+#      tempMat <- alpha/tempMat
+      # if alpha/pi_hat >1, adjusted the value down to 1
+#      tempMat[tempMat>1] <- 1
+#      tauHatList[[i]][[j]][[k]] <- tempMat
+#    }
+#  }
+#}
+#names(tauHatList) <- paste("n=",ns,sep="")
+
+# Use C++ code to simulate datasets
+# the RcppSimDGOFs inputs the list of simulated draws from the MLE regression fits 
+# to the observations and a list of the design matrices derived from the model set M
+# DGOF distributions are returned
+DGOFList <- RcppSimDGOFs(simDat2List,basisMats)
+# label the elements in DGOFList
+for(i in 1:nsLen)
+{
+  for(j in 1:MLen)
+  {
+    for(k in 1:noDraws)
+    {
+      colnames(DGOFList[[i]][[j]][[k]]) <- paste("DGOF Under", names(M)," Observed Best")
+    }
+    names(DGOFList[[i]][[j]]) <- paste("lm Fit for Obs",1:noDraws)
+  }
+  names(DGOFList[[i]]) <- paste("Generated from",names(M))
+}
+names(DGOFList) <- paste("Draws of n=",ns,sep="")
+
+# ECIC steps #4 and #5
+# go through each of the alternative models, assume they are true, and compute quantiles
+# i indexes sample size, j indexes models in the alternative set, and k indexes models in the full set
+# list to store accept or reject decisions by sample size
+aorRList <- list()
+# list to store the decision thresholds
+thresholds <- list()
+
+for(i in 1:nsLen) # index sample size
+{
+  tempAorRVec <- rep(NA,noDraws)
+  tempMatrix <- matrix(NA,nrow=noDraws,ncol=MLen-1) 
+  for(k in 1:noDraws) # go through each draw for each sample size and perform ECIC
+  {
+    # identify the observed best model
+    tempMbInd <- which(names(M)==MbList[[i]][k])
+    # identify the observed DGOF
+    tempObsDGOF <- obsDGOFs[[i]][k]
+    # identify the alternative models
+    altModels <- names(M)[-tempMbInd]
+    tempDGOFQuantiles <- rep(NA,MLen-1)
+    for(h in 1:(MLen-1)) # assume h is index for the true model
+    {
+      # now just retrieve the quantile and DGOF distribution
+      # to compare it to the observed DGOF
+      curAltModel <- altModels[h]
+      curAltModelInd <- which(names(M)==curAltModel)
+      probThisFalseMbInd <- piHatList[[i]][[k]][curAltModelInd,tempMbInd]
+      # this was prompted by issue where probThisFalseMbInd=0 and totalProbFalseMb=0
+      # check with Beckett later if this is the right move...
+      if(probThisFalseMbInd==0) tempTau <- 1
+      else
+      {
+        totalProbFalseMb <- sum(piHatList[[i]][[k]][curAltModelInd,-curAltModelInd])
+        tempTau <- alpha*probThisFalseMbInd/totalProbFalseMb
+        if(tempTau>1) tempTau <- 1
+      }
+      tempDGOFs <- DGOFList[[i]][[curAltModelInd]][[k]][,tempMbInd]
+      tempDGOFQuantiles[h] <- quantile(tempDGOFs,probs=tempTau)
+    }
+    tempMatrix[k,] <- tempDGOFQuantiles
+    # take the alternative model quantile estimates
+    tempFinQuantile <- min(tempDGOFQuantiles)
+    # store 1 if observed model is chosen as best and 0 otherwise
+    tempAorRVec[k] <- ifelse(test=tempObsDGOF<=tempFinQuantile,yes=1,no=0)
+  }
+  thresholds[[i]] <- tempMatrix
+  aorRList[[i]] <- tempAorRVec
   print(i)
 }
 
-# print decisions
-for(i in 1:length(ns))
+# assess observed best model with ECIC choice
+assessList <- list()
+for(i in 1:nsLen)
 {
-  print(ECICResultsM1AIC[[i]]$decisions)
-  print(ECICResultsM2AIC[[i]]$decisions)
+  assessList[[i]] <- rbind(MbList[[i]],aorRList[[i]])
 }
+names(assessList) <- names(DGOFList) <- paste("Draws of n=",ns,sep="")
+
+DecisionRates <- sapply(X=assessList,FUN=function(x) sum(as.numeric(x[2,]))/noDraws)
+plot(x=ns,y=DecisionRates,main="Proportion of runs a model was selected",
+     xlab="Sample Size",ylab="% of a model was selected",pch=16,ylim = c(0,1))
+# take a look at type 1 error rate
+# subset assess list by only when a decision was made i.e. second row = 1
+decAssessList <- lapply(X=assessList,FUN=function(x) x[,x[2,]=="1"])
+# compute type 1 error rate
+t1ErrorRates <- sapply(X=decAssessList,FUN=function(x) sum(x[1,]!="trueKnots")/noDraws)
+plot(x=ns,y=t1ErrorRates,main=c("Type 1 Error Rates by Sample Size at alpha=",alpha),
+     xlab="Sample Size",ylab="% of Time Wrong Best Model Selected",pch=16,ylim = c(0,2*alpha))
+CorrectRates <- sapply(X=decAssessList,FUN=function(x) sum(x[1,]=="trueKnots")/noDraws)
+plot(x=ns,y=CorrectRates,main="Rate that correct model was selected",
+     xlab="Sample Size",ylab="% of Time correct model chosen",pch=16,ylim = c(0,1))
+
+
