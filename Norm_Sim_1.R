@@ -53,7 +53,7 @@ DGOFSimComp <- function(ICScores,MbInd)
 #####################################################################
 
 # store parameters for the model set 
-M <- c(3.5,4,4.5,5)
+M <- c(3.8,4,4.2,4.5) 
 sig=1
 # store the cardinality of the model set
 MLen <- length(M)
@@ -65,15 +65,17 @@ MLen <- length(M)
 # store the true parameter for scenario #1 and scenario #2
 trueMu1 <- 4
 trueMu2 <- 4.3
+# closest mean in model set to the true generating mean in scenario #2
+closestMu <- 4.2
 # set different sample sizes
-ns <- c(3,6,10,15,20) # 15,20
+ns <- c(10,50,100,200,300,400) # 15,20
 # store the cardinality of the sample sizes
 nsLen <- length(ns)
 # set the number of draws for each sample size
 noDraws <- 2000
 datList1 <- list()
 datList2 <- list()
-set.seed(222)
+set.seed(221)
 for(i in 1:nsLen)
 {
   tempN <- ns[i]
@@ -139,7 +141,7 @@ for(i in 1:nsLen)
 {
   # get the frequencies of models selected as best
   tempTable <- table(MbList[[i]])
-  barplot(tempTable/noDraws,main=paste("Dist. of of Best Observed Models(mu=",trueMu1,"is true model)\n n=",ns[i]))
+  barplot(tempTable/noDraws,main=paste("Dist. of Best Observed Models(mu=",trueMu1,"is true model)\n n=",ns[i]))
 }
 
 # list to store the observed best DGOF for each draw of each sample size
@@ -155,11 +157,11 @@ names(obsDGOFs) <- paste("Draws of n=",ns,",Observed DGOFs",sep="")
 
 # sample size for estimating the probability of choosing the observed best model under the assumption an
 # alternative model is true
-N1 <- 2000
+N1 <- 4000
 # sample size for simulating the DGOF distribution under the assumption that an alternative model is true
 N2 <- 4000
 # pre-specified type-1 error rate
-alpha <- 0.05
+alpha <- 0.15
 
 # compute data from simulated models in ECIC step #4 in 
 # advance to ease computational burden
@@ -174,12 +176,12 @@ for(i in 1:nsLen)
   simDat2List[[i]] <- list()
 }
 
-set.seed(19)
+set.seed(2502938)
 # simulate data for each sample size and probability in the model set
 for(i in 1:nsLen) # i indexes sample sizes,
 {
   tempN <- ns[i]
-  for(j in 1:MLen) #  j indexes the assumed true probability
+  for(j in 1:MLen) #  j indexes the assumed true mean
   {
     simDat1List[[i]][[j]] <- rnorm(n=tempN*N1,mean=M[j],sd=sig)
     simDat1List[[i]][[j]] <- matrix(data=simDat1List[[i]][[j]],nrow=tempN,ncol=N1)
@@ -273,22 +275,33 @@ for(i in 1:nsLen) # indexes the sample size
 names(piHatList) <- paste("Draws of n=",ns,sep="")
 
 # list to store the quantiles from alpha/P(Mb=M)
-tauHatList <- list()
-for(i in 1:nsLen)
-{
-  tauHatList[[i]] <- list()
-}
+#tauHatList <- list()
+#for(i in 1:nsLen)
+#{
+#  tauHatList[[i]] <- list()
+#}
 
-for(i in 1:nsLen)
-{
-  tempMat <- piHatList[[i]]
-  tempMat <- alpha/tempMat
+#for(i in 1:nsLen)
+#{
+  #tempMat <- piHatList[[i]]
+  #tempMat <- alpha/tempMat
   # if alpha/pi_hat >1, adjusted the value down to 1
-  tempMat[tempMat>1] <- 1
-  colnames(tempMat) <- paste("tauth percentile using (mu=",M," observed best) ",sep="")
-  tauHatList[[i]] <- tempMat
-}
-names(tauHatList) <- paste("Draws of n=",ns,sep="")
+  #tempMat[tempMat>1] <- 1
+  #colnames(tempMat) <- paste("tauth percentile using (mu=",M," observed best) ",sep="")
+  #tauHatList[[i]] <- tempMat
+  
+  #temp <- alpha/sum(piHatList[[i]][curAltModelInd,-curAltModelInd])
+#  tempMat <- piHatList[[i]]
+#  for(j in 1:MLen)
+#  {
+#    tempMat[j,] <- alpha/sum(piHatList[[i]][j,-j])
+#  }
+  # if alpha/pi_hat >1, adjusted the value down to 1
+#  tempMat[tempMat>1] <- 1
+#  colnames(tempMat) <- paste("tauth percentile using (mu=",M," observed best) ",sep="")
+#  tauHatList[[i]] <- tempMat
+#}
+#names(tauHatList) <- paste("Draws of n=",ns,sep="")
 
 # compute the DGOF distributions as in step 4c) of ECIC
 DGOFList <- list()
@@ -345,12 +358,13 @@ for(i in 1:nsLen) # index sample size
       # to compare it to the observed DGOF
       curAltModel <- altModels[k]
       curAltModelInd <- which(M==curAltModel)
-      tempTau <- tauHatList[[i]][curAltModelInd,tempMbInd]
+      probThisFalseMbInd <-piHatList[[i]][curAltModelInd,tempMbInd]
+      totalProbFalseMb <- sum(piHatList[[i]][curAltModelInd,-curAltModelInd])
+      tempTau <- alpha*probThisFalseMbInd/totalProbFalseMb
+      if(tempTau>1) tempTau <- 1
+      
       tempDGOFs <- DGOFList[[i]][[curAltModelInd]][tempMbInd,]
-      if(length(tempDGOFs[tempDGOFs<0])>0)
-        tempDGOFQuantiles[k] <- quantile(tempDGOFs[tempDGOFs<0],probs=tempTau)
-      else
-        tempDGOFQuantiles[k] <- max(tempDGOFs)
+      tempDGOFQuantiles[k] <- quantile(tempDGOFs,probs=tempTau)
     }
     tempMatrix[j,] <- tempDGOFQuantiles
     # take the alternative model quantile estimates
@@ -370,18 +384,25 @@ for(i in 1:nsLen)
   assessList[[i]] <- rbind(MbList[[i]],aorRList[[i]])
 }
 
+DecisionRates <- sapply(X=assessList,FUN=function(x) sum(x[2,])/noDraws)
+plot(x=ns,y=DecisionRates,main="Proportion of runs a model was selected",
+     xlab="Sample Size",ylab="% of a model was selected",pch=16,ylim = c(0,1))
 # take a look at type 1 error rate
 # subset assess list by only when a decision was made i.e. second row = 1
 decAssessList <- lapply(X=assessList,FUN=function(x) x[,x[2,]==1])
 # compute type 1 error rate
 t1ErrorRates <- sapply(X=decAssessList,FUN=function(x) sum(x[1,]!=trueMu1)/noDraws)
-plot(x=ns,y=t1ErrorRates,main="Type 1 Error Rates by Sample Size",
-     xlab="Sample Size",ylab="% of Time No Decision Made",pch=16)
+plot(x=ns,y=t1ErrorRates,main=c("Type 1 Error Rates by Sample Size at alpha=",alpha),
+     xlab="Sample Size",ylab="% of Time Wrong Best Model Selected",pch=16,ylim = c(0,2*alpha))
+CorrectRates <- sapply(X=decAssessList,FUN=function(x) sum(x[1,]==trueMu1)/noDraws)
+plot(x=ns,y=CorrectRates,main="Rate that correct model was selected",
+     xlab="Sample Size",ylab="% of Time correct model chosen",pch=16,ylim = c(0,1))
 
 #####################################################################
 #                      Run Study for Scenario 2
 #####################################################################
-
+M <- c(3.8,4.0,4.2,4.7)
+# M <- c(3.8,4,4.2,4.5)
 # ECIC step #1
 # compute the IC under each model in the model set for each sample size
 ICComps <- list()
@@ -399,7 +420,7 @@ for(i in 1:nsLen)
   rownames(ICComps[[i]]) <- paste("IC Under mu=",M,sep="")
   colnames(ICComps[[i]]) <- paste("Draw",1:noDraws,sep="")
 }
-names(ICComps) <- paste("True mu=",trueMu2,",Draws of n=",ns,sep="")
+names(ICComps) <- paste("True mu=",trueMu1,",Draws of n=",ns,sep="")
 
 # ECIC step #2
 # apply which.min(x) across each column of each matrix in the ICComps list 
@@ -419,7 +440,7 @@ for(i in 1:nsLen)
 {
   # get the frequencies of models selected as best
   tempTable <- table(MbList[[i]])
-  barplot(tempTable/noDraws,main=paste("Dist. of of Best Observed Models(mu=",trueMu2,"is true model)\n n=",ns[i]))
+  barplot(tempTable/noDraws,main=paste("Dist. of Best Observed Models(mu=",trueMu1,"is true model)\n n=",ns[i]))
 }
 
 # list to store the observed best DGOF for each draw of each sample size
@@ -435,11 +456,11 @@ names(obsDGOFs) <- paste("Draws of n=",ns,",Observed DGOFs",sep="")
 
 # sample size for estimating the probability of choosing the observed best model under the assumption an
 # alternative model is true
-N1 <- 2000
+N1 <- 4000
 # sample size for simulating the DGOF distribution under the assumption that an alternative model is true
 N2 <- 4000
 # pre-specified type-1 error rate
-alpha <- 0.05
+alpha <- 0.15
 
 # compute data from simulated models in ECIC step #4 in 
 # advance to ease computational burden
@@ -454,12 +475,12 @@ for(i in 1:nsLen)
   simDat2List[[i]] <- list()
 }
 
-set.seed(19)
+set.seed(1000)
 # simulate data for each sample size and probability in the model set
 for(i in 1:nsLen) # i indexes sample sizes,
 {
   tempN <- ns[i]
-  for(j in 1:MLen) #  j indexes the assumed true probability
+  for(j in 1:MLen) #  j indexes the assumed true mean
   {
     simDat1List[[i]][[j]] <- rnorm(n=tempN*N1,mean=M[j],sd=sig)
     simDat1List[[i]][[j]] <- matrix(data=simDat1List[[i]][[j]],nrow=tempN,ncol=N1)
@@ -545,7 +566,7 @@ for(i in 1:nsLen) # indexes the sample size
   {
     for(k in 1:MLen) # indexes the times that the kth prob is selected as best
     {
-      tempMat[j,k] <- sum(minICList[[i]][[j]]==k)/N1
+      tempMat[j,k] <- sum(minICList[[i]][[j]]==M[k])/N1
     }
   }
   piHatList[[i]] <- tempMat
@@ -553,22 +574,33 @@ for(i in 1:nsLen) # indexes the sample size
 names(piHatList) <- paste("Draws of n=",ns,sep="")
 
 # list to store the quantiles from alpha/P(Mb=M)
-tauHatList <- list()
-for(i in 1:nsLen)
-{
-  tauHatList[[i]] <- list()
-}
+#tauHatList <- list()
+#for(i in 1:nsLen)
+#{
+#  tauHatList[[i]] <- list()
+#}
 
-for(i in 1:nsLen)
-{
-  tempMat <- piHatList[[i]]
-  tempMat <- alpha/tempMat
-  # if alpha/pi_hat >1, adjusted the value down to 1
-  tempMat[tempMat>1] <- 1
-  colnames(tempMat) <- paste("tauth percentile using (mu=",M," observed best) ",sep="")
-  tauHatList[[i]] <- tempMat
-}
-names(tauHatList) <- paste("Draws of n=",ns,sep="")
+#for(i in 1:nsLen)
+#{
+#tempMat <- piHatList[[i]]
+#tempMat <- alpha/tempMat
+# if alpha/pi_hat >1, adjusted the value down to 1
+#tempMat[tempMat>1] <- 1
+#colnames(tempMat) <- paste("tauth percentile using (mu=",M," observed best) ",sep="")
+#tauHatList[[i]] <- tempMat
+
+#temp <- alpha/sum(piHatList[[i]][curAltModelInd,-curAltModelInd])
+#  tempMat <- piHatList[[i]]
+#  for(j in 1:MLen)
+#  {
+#    tempMat[j,] <- alpha/sum(piHatList[[i]][j,-j])
+#  }
+# if alpha/pi_hat >1, adjusted the value down to 1
+#  tempMat[tempMat>1] <- 1
+#  colnames(tempMat) <- paste("tauth percentile using (mu=",M," observed best) ",sep="")
+#  tauHatList[[i]] <- tempMat
+#}
+#names(tauHatList) <- paste("Draws of n=",ns,sep="")
 
 # compute the DGOF distributions as in step 4c) of ECIC
 DGOFList <- list()
@@ -579,14 +611,14 @@ for(i in 1:nsLen)
 
 for(i in 1:nsLen) # index the sample size
 {
-  for(j in 1:MLen) # index the true generating probability 
+  for(j in 1:MLen) # index the true generating mean
   {
     tempDat <- ICsSimDat2[[i]][[j]]
     # matrix to store the DGOF distributions under the assumption that model k is
     # the observed best index
     tempMat <- matrix(NA,nrow=MLen,ncol=N2)
     colnames(tempMat) <- paste("Draw",1:N2,sep="")
-    for(k in 1:MLen) #index the model assumed to be best
+    for(k in 1:MLen) #index the model assumed to be best (fix Mbs)
     {
       tempDGOFs <- apply(tempDat,MARGIN=2,FUN=function(x) DGOFSimComp(x,MbInd=k))
       tempMat[k,] <- tempDGOFs # store row as DGOF distribution
@@ -625,7 +657,17 @@ for(i in 1:nsLen) # index sample size
       # to compare it to the observed DGOF
       curAltModel <- altModels[k]
       curAltModelInd <- which(M==curAltModel)
-      tempTau <- tauHatList[[i]][curAltModelInd,tempMbInd]
+      probThisFalseMbInd <- piHatList[[i]][curAltModelInd,tempMbInd]
+      # this was prompted by issue where probThisFalseMbInd=0 and totalProbFalseMb=0
+      # check with Beckett later if this is the right move...
+      if(probThisFalseMbInd==0) tempTau <- 1
+      else
+      {
+        totalProbFalseMb <- sum(piHatList[[i]][curAltModelInd,-curAltModelInd])
+        tempTau <- alpha*probThisFalseMbInd/totalProbFalseMb
+        if(tempTau>1) tempTau <- 1
+      }
+      
       tempDGOFs <- DGOFList[[i]][[curAltModelInd]][tempMbInd,]
       tempDGOFQuantiles[k] <- quantile(tempDGOFs,probs=tempTau)
     }
@@ -633,7 +675,7 @@ for(i in 1:nsLen) # index sample size
     # take the alternative model quantile estimates
     tempFinQuantile <- min(tempDGOFQuantiles)
     # store 1 if observed model is chosen as best and 0 otherwise
-    tempAorRVec[j] <- ifelse(test=tempObsDGOF<tempFinQuantile,yes=1,no=0)
+    tempAorRVec[j] <- ifelse(test=tempObsDGOF<=tempFinQuantile,yes=1,no=0)
   }
   thresholds[[i]] <- tempMatrix
   aorRList[[i]] <- tempAorRVec
@@ -647,10 +689,16 @@ for(i in 1:nsLen)
   assessList[[i]] <- rbind(MbList[[i]],aorRList[[i]])
 }
 
+DecisionRates <- sapply(X=assessList,FUN=function(x) sum(x[2,])/noDraws)
+plot(x=ns,y=DecisionRates,main="Proportion of runs a model was selected",
+     xlab="Sample Size",ylab="% of a model was selected",pch=16,ylim = c(0,1))
 # take a look at type 1 error rate
 # subset assess list by only when a decision was made i.e. second row = 1
-decAssessList <- lapply(assessList,FUN=function(x) x[,x[2,]==1])
+decAssessList <- lapply(X=assessList,FUN=function(x) x[,x[2,]==1])
 # compute type 1 error rate
-t1ErrorRates <- sapply(decAssessList,FUN=function(x) sum(x[1,]!=trueMu1)/noDraws)
-plot(x=ns,y=t1ErrorRates,main="Type 1 Error Rates by Sample Size",
-     xlab="Sample Size",ylab="% of Time No Decision Made",pch=16)
+t1ErrorRates <- sapply(X=decAssessList,FUN=function(x) sum(x[1,]!=closestMu)/noDraws)
+plot(x=ns,y=t1ErrorRates,main=c("Type 1 Error Rates by Sample Size at alpha=",alpha),
+     xlab="Sample Size",ylab="% of Time Wrong Best Model Selected",pch=16,ylim = c(0,2*alpha))
+CorrectRates <- sapply(X=decAssessList,FUN=function(x) sum(x[1,]==closestMu)/noDraws)
+plot(x=ns,y=CorrectRates,main="Rate that correct model was selected",
+     xlab="Sample Size",ylab="% of Time correct model chosen",pch=16,ylim = c(0,1))
