@@ -63,20 +63,21 @@ DGOFGenComp <- function(ICScores)
 library(Rcpp)
 library(RcppArmadillo)
 # load C++ script that is used for simulation steps in ECIC
-sourceCpp("ENTERFILEPATHHERE\\Norm_Sim_2_RCppCode.cpp")
+sourceCpp("C:\\Users\\Djizi\\OneDrive\\Desktop\\Sterner_Project\\ECIC_Code\\Norm_Sim_2_RCppCode.cpp")
 
 trueMu <- 0.5
 trueSig <- 1
+trueModel <- "N(0.5,1)"
 M <- c("N(0,1)","N(mu,1)","N(mu,sigma)")
 # model that should be selected
 closestMod <- "N(mu,1)"
 MLen <- length(M)
 # set different sample sizes
-ns <- c(3,10,20,30) # 15,20
+ns <-  c(3,10,50,100,200,350) 
 # store the cardinality of the sample sizes
 nsLen <- length(ns)
 # set the number of draws for each sample size
-noDraws <- 2000
+noDraws <- 300
 datList <- list()
 set.seed(225)
 for(i in 1:nsLen)
@@ -141,7 +142,7 @@ for(i in 1:nsLen)
   rownames(ICComps[[i]]) <- paste("IC Under ",M,sep="")
   colnames(ICComps[[i]]) <- paste("Draw",1:noDraws,sep="")
 }
-names(ICComps) <- paste("True model:",M,",Draws of n=",ns,sep="")
+names(ICComps) <- paste("True model:",trueModel,",Draws of n=",ns,sep="")
 
 # ECIC step #2
 # apply which.min(x) across each column of each matrix in the ICComps list 
@@ -176,9 +177,9 @@ names(obsDGOFs) <- paste("Draws of n=",ns,",Observed DGOFs",sep="")
 
 # sample size for estimating the probability of choosing the observed best model under the assumption an
 # alternative model is true
-N1 <- 500
+N1 <- 300
 # sample size for simulating the DGOF distribution under the assumption that an alternative model is true
-N2 <- 1000
+N2 <- 700
 # pre-specified type-1 error rate
 alpha <- 0.15
 
@@ -186,52 +187,34 @@ alpha <- 0.15
 # advance to ease computational burden
 # simDat1List holds the datasets to estimate \hat{\pi_i}=P_i(g(F)=M_b)
 # simDat2List holds the datasets to estimate the DGOF distributions \Delta f_i
-simDat1List <- list()
-simDat2List <- list()
-# initialize the above lists' elements as lists
-# initialize the above lists' elements as lists
-for(i in 1:nsLen)
-{
-  simDat1List[[i]] <- list()
-  simDat2List[[i]] <- list()
-  for(j in 1:MLen)
-  {
-    simDat1List[[i]][[j]] <- list()
-    simDat2List[[i]][[j]] <- list()
-  }
-}
 
 set.seed(19)
-# create matrices of random draws from normal distributions 
-for(i in 1:nsLen) # index the sample sizes
+ptm=proc.time() #Start timing
+simDat1List <- normDatSim(ns,MLEList,N1)
+simDat2List <- normDatSim(ns,MLEList,N2)
+proc.time() - ptm
+names(simDat1List) <- paste("Draws of n=",ns,sep="")
+names(simDat2List) <- paste("Draws of n=",ns,sep="")
+# provide names for both simulated sets
+for(i in 1:nsLen)
 {
-  tempN <- ns[i]
   for(j in 1:MLen) # indexes the models in the model set
   {
-    for(k in 1:noDraws) # index the draws
-    {
-      # pull the MLEs to plug into the normal model
-      tempMean <- MLEList[[i]][[j]][1,k]
-      tempSig <- sqrt(MLEList[[i]][[j]][2,k])
-      simDat1List[[i]][[j]][[k]] <- matrix(rnorm(tempN*N1,mean=tempMean,sd=tempSig),nrow=tempN,ncol=N1) 
-      simDat2List[[i]][[j]][[k]] <- matrix(rnorm(tempN*N2,mean=tempMean,sd=tempSig),nrow=tempN,ncol=N2)
-      colnames(simDat1List[[i]][[j]][[k]]) <- paste("Draw",1:N1,sep="")
-      colnames(simDat2List[[i]][[j]][[k]]) <- paste("Draw",1:N2,sep="")
-    }
-    names(simDat1List[[i]][[j]]) <- paste("Obs",1:noDraws)
-    names(simDat2List[[i]][[j]]) <- paste("Obs",1:noDraws)
+    names(simDat1List[[i]][[j]]) <- paste("Obs",1:noDraws,";",N1,"Simulated Draws")
+    names(simDat2List[[i]][[j]]) <- paste("Obs",1:noDraws,";",N2,"Simulated Draws")
   }
   names(simDat1List[[i]]) <- paste("Generated from",M)
   names(simDat2List[[i]]) <- paste("Generated from",M)
-  print(i)
 }
-names(simDat1List) <- paste("Draws of n=",ns,sep="")
-names(simDat2List) <- paste("Draws of n=",ns,sep="")
+
+
 
 # Use C++ code to simulate datasets
 # the RcpplmComps inputs the list of simulated draws from the MLE fits 
 # and the model set. Matrices of BICs are returned 
+ptm=proc.time() #Start timing 
 ICsSimDat1 <- RcppICComps(simDat1List,M)
+proc.time() - ptm
 # label the elements in ICsSimDat1
 for(i in 1:nsLen)
 {
