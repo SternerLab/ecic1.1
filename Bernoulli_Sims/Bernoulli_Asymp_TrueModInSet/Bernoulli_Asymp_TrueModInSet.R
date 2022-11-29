@@ -18,7 +18,8 @@ ns <- c(10,30,90,200,400,800)
 nsLen <- length(ns)
 # set the number of draws for each sample size
 noDraws <- 1000
-# sample size for estimating the probability of choosing the observed best model under the assumption an
+# sample size for estimating the probability of choosing the observed best model
+# under the assumption an
 # alternative model is true (ECIC step 4b)
 N1 <- 2000
 # sample size for simulating the DGOF distribution 
@@ -47,7 +48,8 @@ names(datList) <- paste("True p=",trueP,",Draws of n=",ns,sep="")
 ICComps <- list()
 for(i in 1:nsLen)
 {
-  ICComps[[i]] <- ICComputations(datList[[i]],M,MLen,noDraws,"BernoulliNegLL",MNames)
+  ICComps[[i]] <- ICComputations(datList[[i]],M,MLen,noDraws,"BernoulliNegLL",
+                                 MNames)
 }
 names(ICComps) <- paste("True Model:",trueModel,",Draws of n=",ns,sep="")
 
@@ -109,8 +111,10 @@ for(i in 1:nsLen) # i indexes sample sizes
   tempN <- ns[i]
   for(j in 1:MLen) # j indexes the assumed true probability 
   {
-    ICsSimDat1[[i]][[j]] <- ICComputations(simDat1List[[i]][[j]],M,MLen,N1,"BernoulliNegLL",MNames)
-    ICsSimDat2[[i]][[j]] <- ICComputations(simDat2List[[i]][[j]],M,MLen,N2,"BernoulliNegLL",MNames)
+    ICsSimDat1[[i]][[j]] <- ICComputations(simDat1List[[i]][[j]],M,MLen,N1,
+                                           "BernoulliNegLL",MNames)
+    ICsSimDat2[[i]][[j]] <- ICComputations(simDat2List[[i]][[j]],M,MLen,N2,
+                                           "BernoulliNegLL",MNames)
   }
   names(ICsSimDat1[[i]]) <- paste("True Mod:",MNames,sep="")
   names(ICsSimDat2[[i]]) <- paste("True Mod:",MNames,sep="")
@@ -154,7 +158,8 @@ for(i in 1:nsLen)
 names(DGOFList) <- paste("Draws of n=",ns,sep="")
 
 # ECIC steps 4d, 5, and 6
-resultList <- ECICDecisions(MbList,obsDGOFs,piHatList,DGOFList,alpha,MNames,nsLen,MLen,noDraws)
+resultList <- ECICDecisions(MbList,obsDGOFs,piHatList,DGOFList,alpha,MNames,
+                            nsLen,MLen,noDraws)
 
 #####################################################################
 #                      Plot Results
@@ -172,31 +177,39 @@ for(i in 1:nsLen)
   assessList[[i]] <- rbind(MbList[[i]],aOrRList[[i]])
 }
 
-DecisionRates <- sapply(X=assessList,FUN=function(x) sum(as.numeric(x[2,]))/noDraws)
+DecisionRates <- sapply(X=assessList,FUN=function(x) sum(as.numeric(x[2,]))/
+                          noDraws)
 plot(x=ns,y=DecisionRates,main="Proportion of runs a model was selected",
      xlab="Sample Size",ylab="% of a model was selected",pch=16,ylim = c(0,1))
 # take a look at type 1 error rate
 # subset assess list by only when a decision was made i.e. second row = 1
 decAssessList <- lapply(X=assessList,FUN=function(x) x[,x[2,]==1])
 # plot the model decision distribution
-# make barplots for the percentage of the time each model was chosen as best for each sample size
+# make barplots for the percentage of the time each model was chosen as best 
+# for each sample size
 par(mfrow = c(1, 2)) 
 for(i in 1:nsLen)
 {
   # get the frequencies of models selected as best
   tempTable <- table(MbList[[i]])
-  barplot(tempTable/noDraws,main=paste("Mb Distribution n=",ns[i]))
+  barplot(tempTable/noDraws,main=paste("Mb Distribution n=",ns[i]),
+          cex.names=0.45)
   chosenModelRate <- table(decAssessList[[i]][1,])/noDraws*100
   unChosenModelRate <- (noDraws-ncol(decAssessList[[i]]))/noDraws*100
   decDist <- c(chosenModelRate,"NoChoice"=unChosenModelRate)
   decDist <- sort(decDist)
-  barplot(decDist,main=paste("Decision Distribution n=",ns[i]))
+  barplot(decDist,main=paste("Decision Distribution n=",ns[i]),cex.names=0.45)
 }
 par(mfrow = c(1, 1))
 # compute type 1 error rate
-t1ErrorRates <- sapply(X=decAssessList,FUN=function(x) sum(x[1,]!=trueModel)/noDraws)
-plot(x=ns,y=t1ErrorRates,main=c("Type 1 Error Rates by Sample Size at alpha=",alpha),
-     xlab="Sample Size",ylab="% of Time Wrong Best Model Selected",pch=16,ylim = c(0,2*alpha))
-CorrectRates <- sapply(X=decAssessList,FUN=function(x) sum(x[1,]==trueModel)/noDraws)
+t1ErrorRates <- sapply(X=decAssessList,FUN=function(x) sum(x[1,]!=trueModel)/
+                         noDraws)
+plot(x=ns,y=t1ErrorRates,main=c("Type 1 Error Rates by Sample Size at alpha=",
+                                alpha),
+     xlab="Sample Size",ylab="% of Time Wrong Best Model Selected",pch=16,
+     ylim = c(0,2*alpha))
+CorrectRates <- sapply(X=decAssessList,FUN=function(x) sum(x[1,]==trueModel)
+                       /noDraws)
 plot(x=ns,y=CorrectRates,main="Rate that correct model was selected",
-     xlab="Sample Size",ylab="% of Time correct model chosen",pch=16,ylim = c(0,1))
+     xlab="Sample Size",ylab="% of Time correct model chosen",pch=16,
+     ylim = c(0,1))
