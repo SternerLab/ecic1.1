@@ -37,6 +37,26 @@ BICNorm <- function(dat,model)
   return(BIC)
 }
 
+# compute BIC for normal simulations with the penalty term multiplied
+# to be larger
+BICNormLP <- function(dat,model)
+{
+  n <- length(dat)
+  if(model=="N(0,1)")
+    BIC <- -2*(-n/2*log(2*pi)-n/2*log(1)-1/(2*1)*sum((dat-0)^2))
+  else if(model=="N(mu,1)")
+  {
+    muMLE <- mean(dat)
+    BIC <- -2*(-n/2*log(2*pi)-n/2*log(1)-1/(2*1)*sum((dat-muMLE)^2)) + 1*log(n)*10
+  }
+  else
+  {
+    muMLE <- mean(dat)
+    sig2MLE <- (1/n)*sum((dat-muMLE)^2)
+    BIC <- -2*(-n/2*log(2*pi)-n/2*log(sig2MLE)-1/(2*sig2MLE)*sum((dat-muMLE)^2)) + 2*log(n)*10
+  }
+  return(BIC)
+}
 # a general function for computing the DGOF
 DGOFGenComp <- function(ICScores)
 {
@@ -100,11 +120,19 @@ ICComputations <- function(datMat,M,MLen,noDraws,ICType,MNames)
       tempMat[j,] <- tempICs
     }
     rownames(tempMat) <- paste("-LL Under ",MNames,sep="")
-  } else
+  } else if(ICType=="BICNorm")
   {
     for(j in 1:MLen)
     {
       tempICs <- apply(X=datMat,MARGIN=2,FUN=function(x) BICNorm(x,model=M[[j]]))
+      tempMat[j,] <- tempICs
+    }
+    rownames(tempMat) <- paste("BIC Under ",MNames,sep="")
+  } else
+  {
+    for(j in 1:MLen)
+    {
+      tempICs <- apply(X=datMat,MARGIN=2,FUN=function(x) BICNormLP(x,model=M[[j]]))
       tempMat[j,] <- tempICs
     }
     rownames(tempMat) <- paste("BIC Under ",MNames,sep="")
