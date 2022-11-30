@@ -216,3 +216,117 @@ List simDGOFsRcpp(List yList,Rcpp::StringVector models)
     }
     return(returnList);
 }
+
+// Code to accommodate a larger penalty on the BIC
+// LP = large penalty
+
+// compute the BIC for a normally distributed random variable
+// [[Rcpp::export]]
+arma::vec normBICComp2LP(arma::mat tempYMat,string model,arma::vec fillVec, int noSimDraws)
+{
+    double N = tempYMat.n_rows;
+    if(model=="N(mu,1)")
+    {
+        for(int d=0;d<noSimDraws;d++) // indexes data generated from a specific regression fit
+        {
+            arma::vec tempYs = tempYMat.col(d); // pull a particular simulated sample
+            double MLEMean = mean(tempYs);
+            arma::vec sqrdDiffs = pow(tempYs-MLEMean,2);
+            double LL = -N/2.0*log(2.0*pi)-N/2.0*log(1.0)-accu(sqrdDiffs)/(2.0*1.0);
+            fillVec[d] = -2.0*LL + 1.0*log(N)*10; // compute the BIC for this fit
+        }
+    }
+    else // for the N(mu,sig) model
+    {
+        for(int d=0;d<noSimDraws;d++) // indexes data generated from a specific regression fit
+        {
+            arma::vec tempYs = tempYMat.col(d); // pull a particular simulated sample
+            double MLEMean = mean(tempYs);
+            arma::vec sqrdDiffs = pow(tempYs-MLEMean,2);
+            double accuSqrdDiffs = accu(sqrdDiffs);
+            double MLEVar = accuSqrdDiffs/N;
+            double LL = -N/2.0*log(2.0*pi)-N/2.0*log(MLEVar)-accuSqrdDiffs/(2.0*MLEVar);
+            fillVec[d] =  -2.0*LL + 2.0*log(N)*10; // compute the BIC for this fit
+        }
+    }
+    return(fillVec);
+}
+
+// [[Rcpp::export]]
+List ICCompsRcppLP(List yList,Rcpp::StringVector models)
+{
+    int nLen = yList.length(); // number of sample sizes
+    List returnList(nLen); // the return list that indexes the sample sizes
+    for(int i=0;i<nLen;i++) // indexes sample size
+    {
+        int mLen = models.length(); // number of models
+        List returnListSub1(mLen); // part of return list that indexes the generating model
+        List tempListY1 = yList[i]; // step into observations of a particular sample size
+        for(int j=0;j<mLen;j++) // indexes true generating model
+        {
+            List tempListY2 = tempListY1[j]; // step into observations generated from a particular model
+            int noDraws = tempListY2.length(); // number of draws
+            List returnListSub2(noDraws); // part return list that indexes the exact fits for each model
+            for(int k=0;k<noDraws;k++) // indexes specific regression fit
+            {
+                arma::mat tempYMat = tempListY2[k]; // current simulated draws for sample size i, true model j, and model fit k
+                int noSimDraws = tempYMat.n_cols; // (N1 in ECIC paper notation)
+                // create matrix to store BICs for data generated from a specific model fit
+                arma::mat fillMat(noSimDraws,mLen);
+                for(int m=0;m<mLen;m++) // indexes normal model to fit for BIC
+                {
+                    String curModel = models[m];
+                    // vector to fill the BIC computation for each simulated draw generated from model j but assuming here that model m is true
+                    arma::vec fillVec = vec(noSimDraws);
+                    fillVec=normBICComp2LP(tempYMat,curModel,fillVec,noSimDraws);
+                    fillMat.col(m) = fillVec; // column m of fillMat will hold the BICs for each draw computed under model m
+                }
+                returnListSub2[k] = fillMat; // store all BIC computations for normal fit k
+            }
+        returnListSub1[j] = returnListSub2; // store the list of BIC computations for all noDraws matrices truly generated from model j
+        }
+    returnList[i] = returnListSub1; // store the list of BIC computations for all noDraws matrices truly generated from model j with sample sizes i
+    Rcout << "Its. for Sample Size Index " << i+1 << " completed" << endl;
+    }
+    return(returnList);
+}
+
+// [[Rcpp::export]]
+List simDGOFsRcppLP(List yList,Rcpp::StringVector models)
+{
+    int nLen = yList.length(); // number of sample sizes
+    List returnList(nLen); // the return list that indexes the sample sizes
+    for(int i=0;i<nLen;i++) // indexes sample size
+    {
+        int mLen = models.length(); // number of models
+        List returnListSub1(mLen); // part of return list that indexes the generating model
+        List tempListY1 = yList[i]; // step into observations of a particular sample size
+        for(int j=0;j<mLen;j++) // indexes true generating model
+        {
+            List tempListY2 = tempListY1[j]; // step into observations generated from a particular model
+            int noDraws = tempListY2.length(); // number of draws
+            List returnListSub2(noDraws); // part return list that indexes the exact fits for each model
+            for(int k=0;k<noDraws;k++) // indexes specific regression fit
+            {
+                arma::mat tempYMat = tempListY2[k]; // current simulated draws for sample size i, true model j, and model fit k
+                int noSimDraws = tempYMat.n_cols; // (N1 in ECIC paper notation)
+                // create matrix to store BICs for data generated from a specific model fit
+                arma::mat fillMat(noSimDraws,mLen);
+                for(int m=0;m<mLen;m++) // indexes normal model to fit for BIC
+                {
+                    String curModel = models[m];
+                    // vector to fill the BIC computation for each simulated draw generated from model j but assuming here that model m is true
+                    arma::vec fillVec = vec(noSimDraws);
+                    fillVec=normBICComp2LP(tempYMat,curModel,fillVec,noSimDraws);
+                    fillMat.col(m) = fillVec; // column m of fillMat will hold the BICs for each draw computed under model m
+                }
+                arma::mat tempDGOFs = DGOFCompforMatrix(fillMat);
+                returnListSub2[k] = tempDGOFs; // store all BIC computations for normal fit k
+            }
+        returnListSub1[j] = returnListSub2; // store the list of BIC computations for all noDraws matrices truly generated from model j
+        }
+    returnList[i] = returnListSub1; // store the list of BIC computations for all noDraws matrices truly generated from model j with sample sizes i
+    Rcout << "Its. for Sample Size Index " << i+1 << " completed" << endl;
+    }
+    return(returnList);
+}
